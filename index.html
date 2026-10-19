@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard de Robótica - Nética</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600;800;900&family=Poppins:wght@400;500;600;700&family=Roboto+Mono:wght@500;700&display=swap" rel="stylesheet">
+</head>
+<body class="theme-dark font-orbitron">
+
+  <!-- BARRA SUPERIOR / ENCABEZADO -->
+  <header class="top-bar">
+    <div class="brand-zone">
+      <span class="badge">NÉTICA</span>
+      <span id="school-name">Instituto América</span>
+    </div>
+    <div class="quote-zone">
+      <p id="daily-quote">"No tienes que ser grande para empezar, pero tienes que empezar para ser grande."</p>
+    </div>
+    <div class="controls-zone">
+      <select id="group-select" onchange="cambiarGrupo()">
+        <option value="">-- Seleccionar Grupo --</option>
+        <optgroup label="Lunes">
+          <option value="6R_LUN">6° R (09:00 - 10:20)</option>
+          <option value="4B_LUN">4° B (12:00 - 01:20)</option>
+        </optgroup>
+        <optgroup label="Martes">
+          <option value="4V_MAR">4° V (07:40 - 09:00)</option>
+          <option value="6V_MAR">6° V (09:00 - 10:20)</option>
+          <option value="3A_MAR">3° A (11:20 - 12:40)</option>
+          <option value="4R_MAR">4° R (12:40 - 02:00)</option>
+        </optgroup>
+        <optgroup label="Miércoles">
+          <option value="3B_MIE">3° B (07:40 - 09:00)</option>
+          <option value="6B_MIE">6° B (09:00 - 10:20)</option>
+          <option value="3N_MIE">3° N (11:20 - 12:40)</option>
+          <option value="3R_MIE">3° R (12:40 - 02:00)</option>
+        </optgroup>
+        <optgroup label="Jueves">
+          <option value="5B_JUE">5° B (07:40 - 09:00)</option>
+          <option value="5V_JUE">5° V (09:00 - 10:20)</option>
+          <option value="5A_JUE">5° A (11:20 - 12:40)</option>
+          <option value="5R_JUE">5° R (12:40 - 02:00)</option>
+        </optgroup>
+        <optgroup label="Viernes">
+          <option value="4A_VIE">4° A (09:00 - 10:20)</option>
+          <option value="6A_VIE">6° A (11:20 - 12:40)</option>
+          <option value="3V_VIE">3° V (12:40 - 02:00)</option>
+        </optgroup>
+      </select>
+      <button class="btn-icon-only" onclick="abrirModalConfig()" title="Configuración">⚙️</button>
+    </div>
+  </header>
+
+  <!-- CONTENIDO PRINCIPAL -->
+  <main class="dashboard-container" id="main-container">
+
+    <!-- ZONA SUPERIOR: RELOJ Y MULTIMEDIA -->
+    <div class="top-content-grid">
+      <!-- ZONA IZQUIERDA: EL TIEMPO Y ALERTAS -->
+      <section class="time-section card" id="time-card">
+        <div class="card-header">
+          <span class="status-indicator status-idle" id="status-badge">CLASE NO INICIADA</span>
+          <span id="current-date">Cargando fecha...</span>
+        </div>
+
+        <div class="clock-display" id="main-clock">00:00:00</div>
+
+        <!-- TIMERS DESTACADOS DE DESARME Y FIN -->
+        <div class="timer-box">
+          <div class="timer-item">
+            <span class="label">Hora de Desarmar (⚠️ 8 min antes)</span>
+            <span class="value highlight-orange" id="disassemble-time">--:--</span>
+          </div>
+          <div class="timer-item">
+            <span class="label">Fin de Clase</span>
+            <span class="value highlight-red" id="end-time">--:--</span>
+          </div>
+        </div>
+
+        <div class="progress-bar-container">
+          <div class="progress-bar" id="class-progress"></div>
+        </div>
+        <div class="time-remaining" id="time-remaining-text">Selecciona un grupo para iniciar el cronómetro</div>
+
+        <!-- AVISO / NOTA ADICIONAL OPCIONAL -->
+        <div class="extra-notice-box hidden" id="extra-notice-box">
+          <p id="extra-notice-text"></p>
+        </div>
+      </section>
+
+      <!-- ZONA DERECHA: SESIÓN Y RECURSOS -->
+      <section class="session-section card">
+        <div class="card-header">
+          <h2>SESIÓN ACTUAL</h2>
+          <button class="btn-icon-only" onclick="alternarMedios()" title="Cambiar a Modo Video / Imagen">🎬</button>
+        </div>
+
+        <h1 class="session-title" id="session-name">PRÁCTICA 4A "RESCATISTA"</h1>
+
+        <div class="media-container" id="image-container">
+          <img id="robot-image" src="https://images.unsplash.com/photo-1485827404703-89b55fcc595e?w=800&auto=format&fit=crop&q=80" alt="Robot de la sesión">
+        </div>
+
+        <div class="media-container hidden" id="video-container">
+          <iframe id="relax-video" src="https://www.youtube.com/embed/jfKfPfyJRdk" title="Video Relajante" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+        </div>
+      </section>
+    </div>
+
+    <!-- ZONA INFERIOR: LOS 7 EQUIPOS (COLAPSABLE) -->
+    <section class="teams-section card collapsed" id="teams-section">
+      <div class="card-header teams-header-clickable" onclick="toggleSeccionEquipos()">
+        <div class="teams-header-left">
+          <h2>EQUIPOS DE TRABAJO (7 COMPUTADORAS)</h2>
+          <span class="toggle-indicator" id="toggle-arrow">▲ Mostrar Equipos</span>
+        </div>
+        <div class="teams-header-right" onclick="event.stopPropagation()">
+          <button class="btn-icon-only" onclick="generarEquiposAleatorios()" title="Sortear Equipos">🎲</button>
+        </div>
+      </div>
+
+      <div class="teams-grid" id="teams-grid-content">
+        <div class="team-card"><div class="team-title">Equipo 1</div><ul class="team-members-list" id="team-1"><li>Sin asignar</li></ul></div>
+        <div class="team-card"><div class="team-title">Equipo 2</div><ul class="team-members-list" id="team-2"><li>Sin asignar</li></ul></div>
+        <div class="team-card"><div class="team-title">Equipo 3</div><ul class="team-members-list" id="team-3"><li>Sin asignar</li></ul></div>
+        <div class="team-card"><div class="team-title">Equipo 4</div><ul class="team-members-list" id="team-4"><li>Sin asignar</li></ul></div>
+        <div class="team-card"><div class="team-title">Equipo 5</div><ul class="team-members-list" id="team-5"><li>Sin asignar</li></ul></div>
+        <div class="team-card"><div class="team-title">Equipo 6</div><ul class="team-members-list" id="team-6"><li>Sin asignar</li></ul></div>
+        <div class="team-card"><div class="team-title">Equipo 7</div><ul class="team-members-list" id="team-7"><li>Sin asignar</li></ul></div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- MODAL DE CONFIGURACIÓN -->
+  <div class="modal-overlay hidden" id="config-modal">
+    <div class="modal-content">
+      <h2>⚙️ Configuración y Personalización</h2>
+
+      <div class="config-row">
+        <div style="flex: 0.4;">
+          <label for="input-practice-code">Práctica:</label>
+          <input type="text" id="input-practice-code" value="4A" placeholder="Ej. 4A, 2B">
+        </div>
+        <div style="flex: 1;">
+          <label for="input-project-name">Nombre del Proyecto / Robot:</label>
+          <input type="text" id="input-project-name" value="RESCATISTA" placeholder="Ej. RESCATISTA">
+        </div>
+      </div>
+
+      <label for="input-quote">Pensamiento del día:</label>
+      <input type="text" id="input-quote" value="No tienes que ser grande para empezar, pero tienes que empezar para ser grande.">
+
+      <label for="input-extra-notice">Nota / Aviso Extra para el Alumnado (Opcional):</label>
+      <input type="text" id="input-extra-notice" placeholder="Ej. Traer USB la próxima clase / Revisar caja de piezas" value="">
+
+      <!-- SELECCIÓN DE IMAGEN -->
+      <label>Imagen del Robot (URL o archivo de la PC):</label>
+      <div class="image-input-group">
+        <input type="text" id="input-image-url" placeholder="https://enlace-imagen.jpg" value="https://images.unsplash.com/photo-1485827404703-89b55fcc595e?w=800&auto=format&fit=crop&q=80">
+        <input type="file" id="input-image-file" accept="image/*" onchange="cargarImagenLocal(this)">
+      </div>
+
+      <label for="input-video-url">Enlace de Video de YouTube:</label>
+      <input type="text" id="input-video-url" value="https://www.youtube.com/watch?v=jfKfPfyJRdk" placeholder="https://www.youtube.com/watch?v=...">
+
+      <label for="input-students">Lista de Alumnos (separados por coma):</label>
+      <textarea id="input-students" rows="2">Jorge Escudero, Emiliano Duarte, Natalia Baca, Luz, Samarah Urrutia, Regina Villalobos, Leonardo García, Gerardo González, Victoria Silva, Lucía Achaval, Elías, Carlos Orozco, Liam Luján, Carol Islas, Ana Ibarra, Lourdes Quiróz, Bibiana Gómez, Manuel Ramírez, Marcelo Vázquez, Slaimen Ferez, Óscar Carrasco, Pablo, León Flores, Andrea Chávez, Mauro López</textarea>
+
+      <div class="config-row">
+        <div>
+          <label for="select-palette">Paleta de Colores (En Vivo):</label>
+          <select id="select-palette" onchange="cambiarPaleta(this.value)">
+            <option value="theme-dark">Oscuro Máker (Azul/Gris)</option>
+            <option value="theme-cyber">Ciber Neón (Azul Eléctrico)</option>
+            <option value="theme-matrix">Matrix Máker (Verde Neón)</option>
+            <option value="theme-amber">Industrial (Naranja/Ámbar)</option>
+            <option value="theme-cobalt">Cobalto Profundo</option>
+            <option value="theme-clean">Claro Profesional</option>
+          </select>
+        </div>
+        <div>
+          <label for="select-font">Fuente del Reloj (En Vivo):</label>
+          <select id="select-font" onchange="cambiarFuente(this.value)">
+            <option value="font-orbitron">Orbitron (Digital)</option>
+            <option value="font-mono">Roboto Mono (Técnica)</option>
+            <option value="font-poppins">Poppins (Moderna)</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="modal-actions">
+        <button class="btn-save" onclick="guardarConfiguracion()">Guardar y Aplicar</button>
+        <button class="btn-close" onclick="cerrarModalConfig()">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
