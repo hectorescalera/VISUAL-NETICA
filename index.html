@@ -176,7 +176,7 @@
           <label for="input-disassemble-minutes">Minutos antes de desarmar:</label>
           <div class="team-count-control">
             <button type="button" class="team-count-button" onclick="ajustarMinutosDesarme(-1)" aria-label="Reducir minutos antes de desarmar">−</button>
-            <input type="number" id="input-disassemble-minutes" min="1" step="1" value="8">
+            <input type="number" id="input-disassemble-minutes" min="1" step="1" value="8" oninput="previsualizarMinutosDesarme()">
             <button type="button" class="team-count-button" onclick="ajustarMinutosDesarme(1)" aria-label="Aumentar minutos antes de desarmar">+</button>
           </div>
         </div>

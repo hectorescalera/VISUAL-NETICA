@@ -23,6 +23,8 @@ const HORARIOS_GRUPOS = {
   "3V_VIE": { inicio: "12:40", fin: "14:00" }
 };
 
+const DIAS_SEMANA = { LUN: 1, MAR: 2, MIE: 3, JUE: 4, VIE: 5 };
+
 let grupoActivoKey = null;
 let horaInicioClase = null;
 let horaDesarmeClase = null;
@@ -67,10 +69,20 @@ function cambiarGrupo() {
   }
 
   const horario = HORARIOS_GRUPOS[grupoActivoKey];
-  const hoyStr = new Date().toISOString().split('T')[0];
+  const ahora = new Date();
+  const diaClase = DIAS_SEMANA[grupoActivoKey.slice(-3)];
+  let diasHastaClase = (diaClase - ahora.getDay() + 7) % 7;
+  let fechaClase = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate() + diasHastaClase);
+  horaInicioClase = crearFechaHorario(fechaClase, horario.inicio);
+  horaFinClase = crearFechaHorario(fechaClase, horario.fin);
 
-  horaInicioClase = new Date(`${hoyStr}T${horario.inicio}:00`);
-  horaFinClase = new Date(`${hoyStr}T${horario.fin}:00`);
+  if (diasHastaClase === 0 && ahora >= horaFinClase) {
+    diasHastaClase = 7;
+    fechaClase = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate() + diasHastaClase);
+    horaInicioClase = crearFechaHorario(fechaClase, horario.inicio);
+    horaFinClase = crearFechaHorario(fechaClase, horario.fin);
+  }
+
   actualizarHoraDesarme();
 
   document.getElementById("end-time").innerText = formatearHoraCorta(horaFinClase);
@@ -78,12 +90,29 @@ function cambiarGrupo() {
   actualizarReloj();
 }
 
-function actualizarHoraDesarme() {
-  document.getElementById("disassemble-label").innerText = `Hora de Desarmar (${minutosAntesDesarme} min antes)`;
-  if (!horaFinClase) return;
+function crearFechaHorario(fecha, hora) {
+  const [horas, minutos] = hora.split(":").map(Number);
+  const fechaHorario = new Date(fecha);
+  fechaHorario.setHours(horas, minutos, 0, 0);
+  return fechaHorario;
+}
 
-  horaDesarmeClase = new Date(horaFinClase.getTime() - (minutosAntesDesarme * 60 * 1000));
+function actualizarHoraDesarme(minutos = minutosAntesDesarme) {
+  document.getElementById("disassemble-label").innerText = `Hora de Desarmar (${minutos} min antes)`;
+  if (!horaFinClase) {
+    document.getElementById("disassemble-time").innerText = "--:--";
+    return;
+  }
+
+  horaDesarmeClase = new Date(horaFinClase.getTime() - (minutos * 60 * 1000));
   document.getElementById("disassemble-time").innerText = formatearHoraCorta(horaDesarmeClase);
+}
+
+function previsualizarMinutosDesarme() {
+  const minutos = document.getElementById("input-disassemble-minutes").valueAsNumber;
+  if (Number.isInteger(minutos) && minutos > 0) {
+    actualizarHoraDesarme(minutos);
+  }
 }
 
 function evaluarEstadoClase(ahora) {
@@ -101,7 +130,7 @@ function evaluarEstadoClase(ahora) {
     statusBadge.style.background = "#334155";
     timeCard.classList.remove("disassemble-alert");
     progressBar.style.width = "0%";
-    timeRemainingText.innerText = `Faltan ${Math.ceil((horaInicioClase - ahora) / 60000)} min para iniciar`;
+    timeRemainingText.innerText = formatearTiempoParaIniciar(horaInicioClase, ahora);
   } else if (ahora >= horaInicioClase && ahora < horaDesarmeClase) {
     statusBadge.innerText = "🔨 MODO CONSTRUCCIÓN";
     actualizarClaseIndicador(statusBadge, "status-building");
@@ -137,6 +166,20 @@ function evaluarEstadoClase(ahora) {
   }
 }
 
+function formatearTiempoParaIniciar(inicio, ahora) {
+  const minutosTotales = Math.ceil((inicio - ahora) / 60000);
+  const dias = Math.floor(minutosTotales / 1440);
+  const horas = Math.floor((minutosTotales % 1440) / 60);
+  const minutos = minutosTotales % 60;
+  const partes = [];
+
+  if (dias > 0) partes.push(`${dias} día${dias === 1 ? "" : "s"}`);
+  if (horas > 0) partes.push(`${horas} h`);
+  if (minutos > 0) partes.push(`${minutos} min`);
+
+  return `Faltan ${partes.join(", ")} para iniciar`;
+}
+
 function actualizarClaseIndicador(indicador, estado) {
   indicador.classList.remove("status-idle", "status-building", "status-disassemble", "status-finished");
   indicador.classList.add(estado);
@@ -166,6 +209,7 @@ function formatearHoraCorta(dateObj) {
 function toggleSeccionEquipos() {
   const section = document.getElementById("teams-section");
   const arrow = document.getElementById("toggle-arrow");
+  actualizarEquipos(cantidadEquipos);
   section.classList.toggle("collapsed");
   if (section.classList.contains("collapsed")) {
     arrow.innerText = "▲ Mostrar Equipos";
@@ -176,7 +220,13 @@ function toggleSeccionEquipos() {
 
 function actualizarEquipos(cantidad, conservarAlumnos = true) {
   const grid = document.getElementById("teams-grid-content");
-  if (grid.children.length === cantidad) {
+  const equiposCompletos = grid.children.length === cantidad
+    && Array.from(grid.children).every(card => {
+      const lista = card.querySelector(".team-members-list");
+      return lista && lista.children.length > 0;
+    });
+
+  if (equiposCompletos) {
     document.getElementById("teams-title").innerText = `EQUIPOS DE TRABAJO (${cantidad} EQUIPOS)`;
     return;
   }
@@ -317,6 +367,7 @@ function abrirModalConfig() {
 
 function cerrarModalConfig() {
   document.getElementById("config-modal").classList.add("hidden");
+  actualizarHoraDesarme();
 }
 
 function ajustarCantidadEquipos(cambio) {
@@ -329,6 +380,7 @@ function ajustarMinutosDesarme(cambio) {
   const input = document.getElementById("input-disassemble-minutes");
   const cantidadActual = Number.isInteger(input.valueAsNumber) ? input.valueAsNumber : 8;
   input.value = Math.max(1, cantidadActual + cambio);
+  previsualizarMinutosDesarme();
 }
 
 function guardarConfiguracion() {
@@ -432,7 +484,7 @@ function cargarConfiguracionGuardada() {
         minutosAntesDesarme = config.disassembleMinutes;
       }
       document.getElementById("input-disassemble-minutes").value = minutosAntesDesarme;
-      document.getElementById("disassemble-label").innerText = `Hora de Desarmar (${minutosAntesDesarme} min antes)`;
+      actualizarHoraDesarme();
       
       if (config.theme) {
         temaActual = config.theme;
