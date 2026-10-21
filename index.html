@@ -72,7 +72,7 @@
         <!-- TIMERS DESTACADOS DE DESARME Y FIN -->
         <div class="timer-box">
           <div class="timer-item">
-            <span class="label">Hora de Desarmar (⚠️ 8 min antes)</span>
+            <span class="label" id="disassemble-label">Hora de Desarmar (8 min antes)</span>
             <span class="value highlight-orange" id="disassemble-time">--:--</span>
           </div>
           <div class="timer-item">
@@ -111,11 +111,11 @@
       </section>
     </div>
 
-    <!-- ZONA INFERIOR: LOS 7 EQUIPOS (COLAPSABLE) -->
+    <!-- ZONA INFERIOR: EQUIPOS DE TRABAJO (COLAPSABLE) -->
     <section class="teams-section card collapsed" id="teams-section">
       <div class="card-header teams-header-clickable" onclick="toggleSeccionEquipos()">
         <div class="teams-header-left">
-          <h2>EQUIPOS DE TRABAJO (7 COMPUTADORAS)</h2>
+          <h2 id="teams-title">EQUIPOS DE TRABAJO (7 EQUIPOS)</h2>
           <span class="toggle-indicator" id="toggle-arrow">▲ Mostrar Equipos</span>
         </div>
         <div class="teams-header-right" onclick="event.stopPropagation()">
@@ -123,15 +123,7 @@
         </div>
       </div>
 
-      <div class="teams-grid" id="teams-grid-content">
-        <div class="team-card"><div class="team-title">Equipo 1</div><ul class="team-members-list" id="team-1"><li>Sin asignar</li></ul></div>
-        <div class="team-card"><div class="team-title">Equipo 2</div><ul class="team-members-list" id="team-2"><li>Sin asignar</li></ul></div>
-        <div class="team-card"><div class="team-title">Equipo 3</div><ul class="team-members-list" id="team-3"><li>Sin asignar</li></ul></div>
-        <div class="team-card"><div class="team-title">Equipo 4</div><ul class="team-members-list" id="team-4"><li>Sin asignar</li></ul></div>
-        <div class="team-card"><div class="team-title">Equipo 5</div><ul class="team-members-list" id="team-5"><li>Sin asignar</li></ul></div>
-        <div class="team-card"><div class="team-title">Equipo 6</div><ul class="team-members-list" id="team-6"><li>Sin asignar</li></ul></div>
-        <div class="team-card"><div class="team-title">Equipo 7</div><ul class="team-members-list" id="team-7"><li>Sin asignar</li></ul></div>
-      </div>
+      <div class="teams-grid" id="teams-grid-content"></div>
     </section>
 
   </main>
@@ -169,7 +161,26 @@
       <input type="text" id="input-video-url" value="https://www.youtube.com/watch?v=jfKfPfyJRdk" placeholder="https://www.youtube.com/watch?v=...">
 
       <label for="input-students">Lista de Alumnos (separados por coma):</label>
-      <textarea id="input-students" rows="2">Jorge Escudero, Emiliano Duarte, Natalia Baca, Luz, Samarah Urrutia, Regina Villalobos, Leonardo García, Gerardo González, Victoria Silva, Lucía Achaval, Elías, Carlos Orozco, Liam Luján, Carol Islas, Ana Ibarra, Lourdes Quiróz, Bibiana Gómez, Manuel Ramírez, Marcelo Vázquez, Slaimen Ferez, Óscar Carrasco, Pablo, León Flores, Andrea Chávez, Mauro López</textarea>
+      <textarea id="input-students" rows="3">Jorge Escudero, Emiliano Duarte, Natalia Baca, Luz, Samarah Urrutia, Regina Villalobos, Leonardo García, Gerardo González, Victoria Silva, Lucía Achaval, Elías, Carlos Orozco, Liam Luján, Carol Islas, Ana Ibarra, Lourdes Quiróz, Bibiana Gómez, Manuel Ramírez, Marcelo Vázquez, Slaimen Ferez, Óscar Carrasco, Pablo, León Flores, Andrea Chávez, Mauro López</textarea>
+
+      <div class="class-settings-row">
+        <div class="team-count-setting">
+          <label for="input-team-count">Cantidad de equipos:</label>
+          <div class="team-count-control">
+            <button type="button" class="team-count-button" onclick="ajustarCantidadEquipos(-1)" aria-label="Reducir cantidad de equipos">−</button>
+            <input type="number" id="input-team-count" min="1" step="1" value="7">
+            <button type="button" class="team-count-button" onclick="ajustarCantidadEquipos(1)" aria-label="Aumentar cantidad de equipos">+</button>
+          </div>
+        </div>
+        <div class="team-count-setting">
+          <label for="input-disassemble-minutes">Minutos antes de desarmar:</label>
+          <div class="team-count-control">
+            <button type="button" class="team-count-button" onclick="ajustarMinutosDesarme(-1)" aria-label="Reducir minutos antes de desarmar">−</button>
+            <input type="number" id="input-disassemble-minutes" min="1" step="1" value="8">
+            <button type="button" class="team-count-button" onclick="ajustarMinutosDesarme(1)" aria-label="Aumentar minutos antes de desarmar">+</button>
+          </div>
+        </div>
+      </div>
 
       <div class="config-row">
         <div>

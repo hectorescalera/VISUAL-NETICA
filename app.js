@@ -31,10 +31,13 @@ let horaFinClase = null;
 let temaActual = "theme-dark";
 let fuenteActual = "font-orbitron";
 let imagenLocalBase64 = null;
+let cantidadEquipos = 7;
+let minutosAntesDesarme = 8;
 
 // INICIALIZACIÓN Y CARGA DE LOCALSTORAGE
 document.addEventListener("DOMContentLoaded", () => {
   cargarConfiguracionGuardada();
+  actualizarEquipos(cantidadEquipos);
   actualizarReloj();
   setInterval(actualizarReloj, 1000);
 });
@@ -68,12 +71,19 @@ function cambiarGrupo() {
 
   horaInicioClase = new Date(`${hoyStr}T${horario.inicio}:00`);
   horaFinClase = new Date(`${hoyStr}T${horario.fin}:00`);
-  horaDesarmeClase = new Date(horaFinClase.getTime() - (8 * 60 * 1000));
+  actualizarHoraDesarme();
 
-  document.getElementById("disassemble-time").innerText = formatearHoraCorta(horaDesarmeClase);
   document.getElementById("end-time").innerText = formatearHoraCorta(horaFinClase);
 
   actualizarReloj();
+}
+
+function actualizarHoraDesarme() {
+  document.getElementById("disassemble-label").innerText = `Hora de Desarmar (${minutosAntesDesarme} min antes)`;
+  if (!horaFinClase) return;
+
+  horaDesarmeClase = new Date(horaFinClase.getTime() - (minutosAntesDesarme * 60 * 1000));
+  document.getElementById("disassemble-time").innerText = formatearHoraCorta(horaDesarmeClase);
 }
 
 function evaluarEstadoClase(ahora) {
@@ -87,12 +97,14 @@ function evaluarEstadoClase(ahora) {
 
   if (ahora < horaInicioClase) {
     statusBadge.innerText = "ESPERANDO INICIO";
+    actualizarClaseIndicador(statusBadge, "status-idle");
     statusBadge.style.background = "#334155";
     timeCard.classList.remove("disassemble-alert");
     progressBar.style.width = "0%";
     timeRemainingText.innerText = `Faltan ${Math.ceil((horaInicioClase - ahora) / 60000)} min para iniciar`;
   } else if (ahora >= horaInicioClase && ahora < horaDesarmeClase) {
     statusBadge.innerText = "🔨 MODO CONSTRUCCIÓN";
+    actualizarClaseIndicador(statusBadge, "status-building");
     statusBadge.style.background = "var(--status-green)";
     timeCard.classList.remove("disassemble-alert");
 
@@ -104,6 +116,7 @@ function evaluarEstadoClase(ahora) {
     timeRemainingText.innerText = `Tiempo para desarmar: ${minParaDesarme} min`;
   } else if (ahora >= horaDesarmeClase && ahora < horaFinClase) {
     statusBadge.innerText = "⚠️ HORA DE DESARMAR";
+    actualizarClaseIndicador(statusBadge, "status-disassemble");
     statusBadge.style.background = "var(--alert-orange)";
     timeCard.classList.add("disassemble-alert");
 
@@ -115,6 +128,7 @@ function evaluarEstadoClase(ahora) {
     timeRemainingText.innerText = `¡Atención! Fin de clase en: ${minParaFin} min`;
   } else {
     statusBadge.innerText = "CLASE CONCLUIDA";
+    actualizarClaseIndicador(statusBadge, "status-finished");
     statusBadge.style.background = "var(--alert-red)";
     timeCard.classList.remove("disassemble-alert");
     progressBar.style.width = "100%";
@@ -123,13 +137,20 @@ function evaluarEstadoClase(ahora) {
   }
 }
 
+function actualizarClaseIndicador(indicador, estado) {
+  indicador.classList.remove("status-idle", "status-building", "status-disassemble", "status-finished");
+  indicador.classList.add(estado);
+}
+
 function limpiarRelojClase() {
   horaInicioClase = null;
   horaDesarmeClase = null;
   horaFinClase = null;
   document.getElementById("disassemble-time").innerText = "--:--";
   document.getElementById("end-time").innerText = "--:--";
-  document.getElementById("status-badge").innerText = "CLASE NO INICIADA";
+  const statusBadge = document.getElementById("status-badge");
+  statusBadge.innerText = "CLASE NO INICIADA";
+  actualizarClaseIndicador(statusBadge, "status-idle");
   document.getElementById("time-remaining-text").innerText = "Selecciona un grupo para iniciar el cronómetro";
   document.getElementById("class-progress").style.width = "0%";
   document.getElementById("time-card").classList.remove("disassemble-alert");
@@ -153,6 +174,55 @@ function toggleSeccionEquipos() {
   }
 }
 
+function actualizarEquipos(cantidad, conservarAlumnos = true) {
+  const grid = document.getElementById("teams-grid-content");
+  if (grid.children.length === cantidad) {
+    document.getElementById("teams-title").innerText = `EQUIPOS DE TRABAJO (${cantidad} EQUIPOS)`;
+    return;
+  }
+
+  const alumnos = conservarAlumnos
+    ? Array.from(grid.querySelectorAll(".team-members-list li"))
+      .map(item => item.innerText)
+      .filter(nombre => nombre !== "Sin asignar")
+    : [];
+
+  grid.innerHTML = "";
+  document.getElementById("teams-title").innerText = `EQUIPOS DE TRABAJO (${cantidad} EQUIPOS)`;
+
+  for (let equipo = 1; equipo <= cantidad; equipo++) {
+    const card = document.createElement("div");
+    card.className = "team-card";
+
+    const title = document.createElement("div");
+    title.className = "team-title";
+    title.innerText = `Equipo ${equipo}`;
+
+    const list = document.createElement("ul");
+    list.className = "team-members-list";
+    list.id = `team-${equipo}`;
+
+    card.append(title, list);
+    grid.appendChild(card);
+  }
+
+  alumnos.forEach((alumno, index) => {
+    const equipo = (index % cantidad) + 1;
+    const list = document.getElementById(`team-${equipo}`);
+    const item = document.createElement("li");
+    item.innerText = alumno;
+    list.appendChild(item);
+  });
+
+  grid.querySelectorAll(".team-members-list").forEach(list => {
+    if (list.children.length === 0) {
+      const item = document.createElement("li");
+      item.innerText = "Sin asignar";
+      list.appendChild(item);
+    }
+  });
+}
+
 function generarEquiposAleatorios() {
   const inputEstudiantes = document.getElementById("input-students").value;
   let alumnos = inputEstudiantes.split(',').map(name => name.trim()).filter(name => name.length > 0);
@@ -167,16 +237,23 @@ function generarEquiposAleatorios() {
     [alumnos[i], alumnos[j]] = [alumnos[j], alumnos[i]];
   }
 
-  for (let eq = 1; eq <= 7; eq++) {
-    document.getElementById(`team-${eq}`).innerHTML = "";
-  }
+  const listasEquipos = document.querySelectorAll("#teams-grid-content .team-members-list");
+  listasEquipos.forEach(lista => { lista.innerHTML = ""; });
 
   alumnos.forEach((alumno, index) => {
-    const equipoTarget = (index % 7) + 1;
+    const equipoTarget = (index % cantidadEquipos) + 1;
     const lista = document.getElementById(`team-${equipoTarget}`);
     const li = document.createElement("li");
     li.innerText = alumno;
     lista.appendChild(li);
+  });
+
+  listasEquipos.forEach(lista => {
+    if (lista.children.length === 0) {
+      const li = document.createElement("li");
+      li.innerText = "Sin asignar";
+      lista.appendChild(li);
+    }
   });
 
   const section = document.getElementById("teams-section");
@@ -242,7 +319,39 @@ function cerrarModalConfig() {
   document.getElementById("config-modal").classList.add("hidden");
 }
 
+function ajustarCantidadEquipos(cambio) {
+  const input = document.getElementById("input-team-count");
+  const cantidadActual = Number.isInteger(input.valueAsNumber) ? input.valueAsNumber : 7;
+  input.value = Math.max(1, cantidadActual + cambio);
+}
+
+function ajustarMinutosDesarme(cambio) {
+  const input = document.getElementById("input-disassemble-minutes");
+  const cantidadActual = Number.isInteger(input.valueAsNumber) ? input.valueAsNumber : 8;
+  input.value = Math.max(1, cantidadActual + cambio);
+}
+
 function guardarConfiguracion() {
+  const cantidadIngresada = document.getElementById("input-team-count").valueAsNumber;
+  if (!Number.isInteger(cantidadIngresada) || cantidadIngresada < 1) {
+    alert("La cantidad de equipos debe ser un número entero mayor que cero.");
+    return;
+  }
+
+  const minutosIngresados = document.getElementById("input-disassemble-minutes").valueAsNumber;
+  if (!Number.isInteger(minutosIngresados) || minutosIngresados < 1) {
+    alert("Los minutos antes de desarmar deben ser un número entero mayor que cero.");
+    return;
+  }
+
+  cantidadEquipos = cantidadIngresada;
+  minutosAntesDesarme = minutosIngresados;
+  actualizarEquipos(cantidadEquipos);
+  actualizarHoraDesarme();
+  if (horaInicioClase && horaFinClase) {
+    evaluarEstadoClase(new Date());
+  }
+
   const code = document.getElementById("input-practice-code").value.trim();
   const proj = document.getElementById("input-project-name").value.trim();
   
@@ -294,6 +403,8 @@ function guardarEnLocalStorage() {
     imageBase64: imagenLocalBase64,
     videoUrl: document.getElementById("input-video-url").value,
     students: document.getElementById("input-students").value,
+    teamCount: cantidadEquipos,
+    disassembleMinutes: minutosAntesDesarme,
     theme: temaActual,
     font: fuenteActual
   };
@@ -313,6 +424,15 @@ function cargarConfiguracionGuardada() {
       if (config.imageUrl !== undefined) document.getElementById("input-image-url").value = config.imageUrl;
       if (config.videoUrl !== undefined) document.getElementById("input-video-url").value = config.videoUrl;
       if (config.students !== undefined) document.getElementById("input-students").value = config.students;
+      if (Number.isInteger(config.teamCount) && config.teamCount > 0) {
+        cantidadEquipos = config.teamCount;
+      }
+      document.getElementById("input-team-count").value = cantidadEquipos;
+      if (Number.isInteger(config.disassembleMinutes) && config.disassembleMinutes > 0) {
+        minutosAntesDesarme = config.disassembleMinutes;
+      }
+      document.getElementById("input-disassemble-minutes").value = minutosAntesDesarme;
+      document.getElementById("disassemble-label").innerText = `Hora de Desarmar (${minutosAntesDesarme} min antes)`;
       
       if (config.theme) {
         temaActual = config.theme;
