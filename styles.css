@@ -73,10 +73,23 @@ body.theme-clean {
   --quote-color: #0369a1;
 }
 
+body.theme-violet {
+  --bg-dark: #1b1528;
+  --card-bg: #2a203b;
+  --card-border: #59436f;
+  --text-main: #faf7ff;
+  --text-muted: #d0c2e2;
+  --accent-blue: #c084fc;
+  --accent-cyan: #67e8f9;
+  --quote-color: #e9d5ff;
+}
+
 /* FUENTES DE RELOJ */
 body.font-orbitron { --font-clock: 'Orbitron', sans-serif; }
 body.font-mono { --font-clock: 'Roboto Mono', monospace; }
 body.font-poppins { --font-clock: 'Poppins', sans-serif; }
+body.font-nunito { --font-clock: 'Nunito Sans', sans-serif; }
+body.font-source-sans { --font-clock: 'Source Sans 3', sans-serif; }
 
 * {
   box-sizing: border-box;
