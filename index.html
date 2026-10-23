@@ -25,30 +25,30 @@
         <option value="">-- Seleccionar Grupo --</option>
         <optgroup label="Lunes">
           <option value="6R_LUN">6° R (09:00 - 10:20)</option>
-          <option value="4B_LUN">4° B (12:00 - 01:20)</option>
+          <option value="4B_LUN">4° B (12:00 - 13:20)</option>
         </optgroup>
         <optgroup label="Martes">
           <option value="4V_MAR">4° V (07:40 - 09:00)</option>
           <option value="6V_MAR">6° V (09:00 - 10:20)</option>
           <option value="3A_MAR">3° A (11:20 - 12:40)</option>
-          <option value="4R_MAR">4° R (12:40 - 02:00)</option>
+          <option value="4R_MAR">4° R (12:40 - 14:00)</option>
         </optgroup>
         <optgroup label="Miércoles">
           <option value="3B_MIE">3° B (07:40 - 09:00)</option>
           <option value="6B_MIE">6° B (09:00 - 10:20)</option>
           <option value="3N_MIE">3° N (11:20 - 12:40)</option>
-          <option value="3R_MIE">3° R (12:40 - 02:00)</option>
+          <option value="3R_MIE">3° R (12:40 - 14:00)</option>
         </optgroup>
         <optgroup label="Jueves">
           <option value="5B_JUE">5° B (07:40 - 09:00)</option>
           <option value="5V_JUE">5° V (09:00 - 10:20)</option>
           <option value="5A_JUE">5° A (11:20 - 12:40)</option>
-          <option value="5R_JUE">5° R (12:40 - 02:00)</option>
+          <option value="5R_JUE">5° R (12:40 - 14:00)</option>
         </optgroup>
         <optgroup label="Viernes">
           <option value="4A_VIE">4° A (09:00 - 10:20)</option>
           <option value="6A_VIE">6° A (11:20 - 12:40)</option>
-          <option value="3V_VIE">3° V (12:40 - 02:00)</option>
+          <option value="3V_VIE">3° V (12:40 - 14:00)</option>
         </optgroup>
       </select>
       <button class="btn-icon-only" onclick="abrirModalConfig()" title="Configuración">⚙️</button>
@@ -123,6 +123,10 @@
         </div>
       </div>
 
+      <div class="daily-roster">
+        <label for="input-students">Alumnos del grupo (puedes ajustar la lista para esta clase):</label>
+        <textarea id="input-students" rows="2" placeholder="Selecciona un grupo para cargar sus alumnos"></textarea>
+      </div>
       <div class="teams-grid" id="teams-grid-content"></div>
     </section>
 
@@ -160,8 +164,21 @@
       <label for="input-video-url">Enlace de Video de YouTube:</label>
       <input type="text" id="input-video-url" value="https://www.youtube.com/watch?v=jfKfPfyJRdk" placeholder="https://www.youtube.com/watch?v=...">
 
-      <label for="input-students">Lista de Alumnos (separados por coma):</label>
-      <textarea id="input-students" rows="3">Jorge Escudero, Emiliano Duarte, Natalia Baca, Luz, Samarah Urrutia, Regina Villalobos, Leonardo García, Gerardo González, Victoria Silva, Lucía Achaval, Elías, Carlos Orozco, Liam Luján, Carol Islas, Ana Ibarra, Lourdes Quiróz, Bibiana Gómez, Manuel Ramírez, Marcelo Vázquez, Slaimen Ferez, Óscar Carrasco, Pablo, León Flores, Andrea Chávez, Mauro López</textarea>
+      <section class="groups-config">
+        <div class="groups-config-heading">
+          <div>
+            <h3>Grupos, horarios y alumnos</h3>
+            <p>Configura el ciclo escolar aquí. En el CSV cada fila representa un alumno de un grupo.</p>
+          </div>
+          <div class="groups-file-actions">
+            <button type="button" class="btn-secondary" onclick="descargarPlantillaGrupos()">Descargar CSV</button>
+            <button type="button" class="btn-secondary" onclick="document.getElementById('group-import-file').click()">Importar CSV</button>
+            <input type="file" id="group-import-file" accept=".csv,text/csv" onchange="importarGruposCSV(this)">
+          </div>
+        </div>
+        <div id="groups-config-list"></div>
+        <button type="button" class="btn-secondary add-group-button" onclick="agregarGrupoConfig()">＋ Agregar grupo</button>
+      </section>
 
       <div class="class-settings-row">
         <div class="team-count-setting">
