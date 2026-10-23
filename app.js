@@ -24,7 +24,33 @@ const HORARIOS_GRUPOS = {
 };
 
 const DIAS_SEMANA = { LUN: 1, MAR: 2, MIE: 3, JUE: 4, VIE: 5 };
+const NOMBRES_DIAS = {
+  LUN: "Lunes",
+  MAR: "Martes",
+  MIE: "Miércoles",
+  JUE: "Jueves",
+  VIE: "Viernes"
+};
 
+const ALUMNOS_LISTA_ANTERIOR = "Jorge Escudero, Emiliano Duarte, Natalia Baca, Luz, Samarah Urrutia, Regina Villalobos, Leonardo García, Gerardo González, Victoria Silva, Lucía Achaval, Elías, Carlos Orozco, Liam Luján, Carol Islas, Ana Ibarra, Lourdes Quiróz, Bibiana Gómez, Manuel Ramírez, Marcelo Vázquez, Slaimen Ferez, Óscar Carrasco, Pablo, León Flores, Andrea Chávez, Mauro López";
+
+function crearGruposPredeterminados() {
+  return Object.entries(HORARIOS_GRUPOS).map(([id, horario]) => {
+    const [codigo, dia] = id.split("_");
+    const coincidencia = codigo.match(/^(\d+)([A-Z])$/);
+    const nombre = coincidencia ? `${coincidencia[1]}° ${coincidencia[2]}` : codigo;
+    return {
+      id,
+      nombre,
+      dia,
+      inicio: horario.inicio,
+      fin: horario.fin,
+      alumnos: id === "4A_VIE" ? ALUMNOS_LISTA_ANTERIOR.split(",").map(alumno => alumno.trim()) : []
+    };
+  });
+}
+
+let gruposConfigurados = crearGruposPredeterminados();
 let grupoActivoKey = null;
 let horaInicioClase = null;
 let horaDesarmeClase = null;
@@ -36,9 +62,21 @@ let imagenLocalBase64 = null;
 let cantidadEquipos = 7;
 let minutosAntesDesarme = 8;
 
+// EQUIPOS GUARDADOS POR GRUPO Y TEMPORIZADOR DE GUARDADO DE ALUMNOS
+let equiposPorGrupo = {};
+let temporizadorGuardadoAlumnos = null;
+
 // INICIALIZACIÓN Y CARGA DE LOCALSTORAGE
 document.addEventListener("DOMContentLoaded", () => {
+  cargarEquiposGuardados();
   cargarConfiguracionGuardada();
+
+  // Al editar el cuadro de alumnos, se guarda en la lista del grupo activo
+  document.getElementById("input-students").addEventListener("input", () => {
+    clearTimeout(temporizadorGuardadoAlumnos);
+    temporizadorGuardadoAlumnos = setTimeout(guardarAlumnosDelGrupoActivo, 500);
+  });
+
   actualizarEquipos(cantidadEquipos);
   actualizarReloj();
   setInterval(actualizarReloj, 1000);
@@ -62,26 +100,34 @@ function actualizarReloj() {
 function cambiarGrupo() {
   const select = document.getElementById("group-select");
   grupoActivoKey = select.value;
+  const grupoActivo = gruposConfigurados.find(grupo => grupo.id === grupoActivoKey);
 
-  if (!grupoActivoKey || !HORARIOS_GRUPOS[grupoActivoKey]) {
+  if (!grupoActivo) {
     limpiarRelojClase();
+    document.getElementById("input-students").value = "";
+    mostrarEquipos([]);
     return;
   }
 
-  const horario = HORARIOS_GRUPOS[grupoActivoKey];
   const ahora = new Date();
-  const diaClase = DIAS_SEMANA[grupoActivoKey.slice(-3)];
+  const diaClase = DIAS_SEMANA[grupoActivo.dia];
   let diasHastaClase = (diaClase - ahora.getDay() + 7) % 7;
   let fechaClase = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate() + diasHastaClase);
-  horaInicioClase = crearFechaHorario(fechaClase, horario.inicio);
-  horaFinClase = crearFechaHorario(fechaClase, horario.fin);
+  horaInicioClase = crearFechaHorario(fechaClase, grupoActivo.inicio);
+  horaFinClase = crearFechaHorario(fechaClase, grupoActivo.fin);
 
   if (diasHastaClase === 0 && ahora >= horaFinClase) {
     diasHastaClase = 7;
     fechaClase = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate() + diasHastaClase);
-    horaInicioClase = crearFechaHorario(fechaClase, horario.inicio);
-    horaFinClase = crearFechaHorario(fechaClase, horario.fin);
+    horaInicioClase = crearFechaHorario(fechaClase, grupoActivo.inicio);
+    horaFinClase = crearFechaHorario(fechaClase, grupoActivo.fin);
   }
+
+  document.getElementById("input-students").value = grupoActivo.alumnos.join("\n");
+
+  // Muestra los equipos guardados de este grupo (o vacíos si aún no se sortean)
+  const guardados = equiposPorGrupo[grupoActivoKey];
+  mostrarEquipos(guardados && guardados.length === cantidadEquipos ? guardados : []);
 
   actualizarHoraDesarme();
 
@@ -273,12 +319,68 @@ function actualizarEquipos(cantidad, conservarAlumnos = true) {
   });
 }
 
+// EQUIPOS GUARDADOS POR GRUPO
+function cargarEquiposGuardados() {
+  try {
+    equiposPorGrupo = JSON.parse(localStorage.getItem("robotica_equipos")) || {};
+  } catch (e) {
+    equiposPorGrupo = {};
+  }
+}
+
+function guardarEquiposGrupo(equipos) {
+  if (!grupoActivoKey) return;
+  equiposPorGrupo[grupoActivoKey] = equipos;
+  try {
+    localStorage.setItem("robotica_equipos", JSON.stringify(equiposPorGrupo));
+  } catch (e) {
+    console.error("No se pudieron guardar los equipos", e);
+  }
+}
+
+function mostrarEquipos(equipos) {
+  const grid = document.getElementById("teams-grid-content");
+  grid.innerHTML = "";
+  document.getElementById("teams-title").innerText = `EQUIPOS DE TRABAJO (${cantidadEquipos} EQUIPOS)`;
+
+  for (let n = 1; n <= cantidadEquipos; n++) {
+    const card = document.createElement("div");
+    card.className = "team-card";
+
+    const title = document.createElement("div");
+    title.className = "team-title";
+    title.innerText = `Equipo ${n}`;
+
+    const list = document.createElement("ul");
+    list.className = "team-members-list";
+    list.id = `team-${n}`;
+
+    const miembros = equipos[n - 1] || [];
+    (miembros.length ? miembros : ["Sin asignar"]).forEach(nombre => {
+      const li = document.createElement("li");
+      li.innerText = nombre;
+      list.appendChild(li);
+    });
+
+    card.append(title, list);
+    grid.appendChild(card);
+  }
+}
+
+// GUARDADO DE LA LISTA DE ALUMNOS DEL GRUPO ACTIVO
+function guardarAlumnosDelGrupoActivo() {
+  const grupo = gruposConfigurados.find(g => g.id === grupoActivoKey);
+  if (!grupo) return;
+  grupo.alumnos = parsearListaAlumnos(document.getElementById("input-students").value);
+  guardarEnLocalStorage();
+}
+
 function generarEquiposAleatorios() {
   const inputEstudiantes = document.getElementById("input-students").value;
-  let alumnos = inputEstudiantes.split(',').map(name => name.trim()).filter(name => name.length > 0);
+  let alumnos = inputEstudiantes.split(/[,\n]/).map(name => name.trim()).filter(name => name.length > 0);
 
   if (alumnos.length === 0) {
-    alert("Agrega nombres de alumnos en la configuración.");
+    alert("Agrega alumnos a la lista de este grupo antes de sortear los equipos.");
     return;
   }
 
@@ -287,24 +389,10 @@ function generarEquiposAleatorios() {
     [alumnos[i], alumnos[j]] = [alumnos[j], alumnos[i]];
   }
 
-  const listasEquipos = document.querySelectorAll("#teams-grid-content .team-members-list");
-  listasEquipos.forEach(lista => { lista.innerHTML = ""; });
-
-  alumnos.forEach((alumno, index) => {
-    const equipoTarget = (index % cantidadEquipos) + 1;
-    const lista = document.getElementById(`team-${equipoTarget}`);
-    const li = document.createElement("li");
-    li.innerText = alumno;
-    lista.appendChild(li);
-  });
-
-  listasEquipos.forEach(lista => {
-    if (lista.children.length === 0) {
-      const li = document.createElement("li");
-      li.innerText = "Sin asignar";
-      lista.appendChild(li);
-    }
-  });
+  const equipos = Array.from({ length: cantidadEquipos }, () => []);
+  alumnos.forEach((alumno, index) => equipos[index % cantidadEquipos].push(alumno));
+  mostrarEquipos(equipos);
+  guardarEquiposGrupo(equipos);
 
   const section = document.getElementById("teams-section");
   section.classList.remove("collapsed");
@@ -362,6 +450,8 @@ function actualizarClasesBody() {
 }
 
 function abrirModalConfig() {
+  // Recarga el editor con lo último guardado para no sobrescribir cambios recientes
+  renderizarEditorGrupos();
   document.getElementById("config-modal").classList.remove("hidden");
 }
 
@@ -383,7 +473,352 @@ function ajustarMinutosDesarme(cambio) {
   previsualizarMinutosDesarme();
 }
 
+function parsearListaAlumnos(texto) {
+  return texto.split(/[,\n]/).map(alumno => alumno.trim()).filter(Boolean);
+}
+
+function crearIdGrupo() {
+  return `grupo-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function renderizarSelectorGrupos() {
+  const select = document.getElementById("group-select");
+  const seleccionActual = select.value;
+  select.innerHTML = "";
+
+  const opcionInicial = document.createElement("option");
+  opcionInicial.value = "";
+  opcionInicial.innerText = "-- Seleccionar Grupo --";
+  select.appendChild(opcionInicial);
+
+  Object.keys(DIAS_SEMANA).forEach(dia => {
+    const gruposDelDia = gruposConfigurados
+      .filter(grupo => grupo.dia === dia)
+      .sort((a, b) => a.inicio.localeCompare(b.inicio));
+    if (gruposDelDia.length === 0) return;
+
+    const optgroup = document.createElement("optgroup");
+    optgroup.label = NOMBRES_DIAS[dia];
+    gruposDelDia.forEach(grupo => {
+      const opcion = document.createElement("option");
+      opcion.value = grupo.id;
+      opcion.innerText = `${grupo.nombre} (${grupo.inicio} - ${grupo.fin})`;
+      optgroup.appendChild(opcion);
+    });
+    select.appendChild(optgroup);
+  });
+
+  if (gruposConfigurados.some(grupo => grupo.id === seleccionActual)) {
+    select.value = seleccionActual;
+  }
+}
+
+function crearCampoGrupo(textoEtiqueta, control, identificador) {
+  const campo = document.createElement("div");
+  campo.className = "group-config-field";
+  const etiqueta = document.createElement("label");
+  etiqueta.htmlFor = identificador;
+  etiqueta.innerText = textoEtiqueta;
+  control.id = identificador;
+  campo.append(etiqueta, control);
+  return campo;
+}
+
+function renderizarEditorGrupos(grupos = gruposConfigurados) {
+  const contenedor = document.getElementById("groups-config-list");
+  contenedor.innerHTML = "";
+
+  grupos.forEach((grupo, indice) => {
+    const tarjeta = document.createElement("div");
+    tarjeta.className = "group-config-card";
+    tarjeta.dataset.groupId = grupo.id;
+
+    const encabezado = document.createElement("div");
+    encabezado.className = "group-config-card-heading";
+    const titulo = document.createElement("strong");
+    titulo.innerText = grupo.nombre || `Grupo ${indice + 1}`;
+    const quitar = document.createElement("button");
+    quitar.type = "button";
+    quitar.className = "btn-remove-group";
+    quitar.innerText = "Quitar";
+    quitar.setAttribute("aria-label", `Quitar ${grupo.nombre || `grupo ${indice + 1}`}`);
+    quitar.addEventListener("click", () => tarjeta.remove());
+    encabezado.append(titulo, quitar);
+
+    const datos = document.createElement("div");
+    datos.className = "group-config-fields";
+
+    const nombre = document.createElement("input");
+    nombre.type = "text";
+    nombre.className = "group-name";
+    nombre.value = grupo.nombre;
+    nombre.placeholder = "Ej. 4° A";
+
+    const dia = document.createElement("select");
+    dia.className = "group-day";
+    Object.entries(NOMBRES_DIAS).forEach(([codigo, nombreDia]) => {
+      const opcion = document.createElement("option");
+      opcion.value = codigo;
+      opcion.innerText = nombreDia;
+      dia.appendChild(opcion);
+    });
+    dia.value = grupo.dia;
+
+    const inicio = document.createElement("input");
+    inicio.type = "time";
+    inicio.className = "group-start";
+    inicio.value = grupo.inicio;
+
+    const fin = document.createElement("input");
+    fin.type = "time";
+    fin.className = "group-end";
+    fin.value = grupo.fin;
+
+    const nombres = document.createElement("textarea");
+    nombres.className = "group-students";
+    nombres.rows = 3;
+    nombres.value = grupo.alumnos.join("\n");
+    nombres.placeholder = "Un alumno por línea";
+
+    datos.append(
+      crearCampoGrupo("Nombre del grupo", nombre, `group-name-${indice}`),
+      crearCampoGrupo("Día", dia, `group-day-${indice}`),
+      crearCampoGrupo("Inicio", inicio, `group-start-${indice}`),
+      crearCampoGrupo("Fin", fin, `group-end-${indice}`)
+    );
+    tarjeta.append(
+      encabezado,
+      datos,
+      crearCampoGrupo("Alumnos (uno por línea)", nombres, `group-students-${indice}`)
+    );
+    contenedor.appendChild(tarjeta);
+  });
+}
+
+function agregarGrupoConfig() {
+  const gruposActuales = Array.from(document.querySelectorAll("#groups-config-list .group-config-card"))
+    .map(tarjeta => ({
+      id: tarjeta.dataset.groupId || crearIdGrupo(),
+      nombre: tarjeta.querySelector(".group-name").value,
+      dia: tarjeta.querySelector(".group-day").value,
+      inicio: tarjeta.querySelector(".group-start").value,
+      fin: tarjeta.querySelector(".group-end").value,
+      alumnos: parsearListaAlumnos(tarjeta.querySelector(".group-students").value)
+    }));
+  gruposActuales.push({
+    id: crearIdGrupo(),
+    nombre: "",
+    dia: "LUN",
+    inicio: "08:00",
+    fin: "09:00",
+    alumnos: []
+  });
+  renderizarEditorGrupos(gruposActuales);
+}
+
+function leerGruposDesdeEditor(mostrarErrores = true) {
+  const tarjetas = Array.from(document.querySelectorAll("#groups-config-list .group-config-card"));
+  const grupos = [];
+  const claves = new Set();
+
+  for (let indice = 0; indice < tarjetas.length; indice++) {
+    const tarjeta = tarjetas[indice];
+    const nombre = tarjeta.querySelector(".group-name").value.trim();
+    const dia = tarjeta.querySelector(".group-day").value;
+    const inicio = tarjeta.querySelector(".group-start").value;
+    const fin = tarjeta.querySelector(".group-end").value;
+    const alumnos = parsearListaAlumnos(tarjeta.querySelector(".group-students").value);
+    const numeroFila = indice + 1;
+
+    if (!nombre || !DIAS_SEMANA[dia] || !/^\d{2}:\d{2}$/.test(inicio) || !/^\d{2}:\d{2}$/.test(fin) || inicio >= fin) {
+      if (mostrarErrores) alert(`Revisa el grupo ${numeroFila}: indica nombre, día y un horario válido donde el fin sea posterior al inicio.`);
+      return null;
+    }
+
+    const clave = `${dia}:${nombre.toLocaleLowerCase()}`;
+    if (claves.has(clave)) {
+      if (mostrarErrores) alert(`El grupo "${nombre}" aparece más de una vez el mismo día.`);
+      return null;
+    }
+    claves.add(clave);
+    grupos.push({ id: tarjeta.dataset.groupId || crearIdGrupo(), nombre, dia, inicio, fin, alumnos });
+  }
+
+  return grupos;
+}
+
+function normalizarTextoCSV(texto) {
+  return texto.trim().toLocaleLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+}
+
+function detectarDelimitadorCSV(texto) {
+  const primeraLinea = texto.split(/\r?\n/, 1)[0];
+  let comas = 0;
+  let puntosYComas = 0;
+  let entreComillas = false;
+  for (let i = 0; i < primeraLinea.length; i++) {
+    if (primeraLinea[i] === '"') {
+      if (entreComillas && primeraLinea[i + 1] === '"') i++;
+      else entreComillas = !entreComillas;
+    } else if (!entreComillas && primeraLinea[i] === ",") {
+      comas++;
+    } else if (!entreComillas && primeraLinea[i] === ";") {
+      puntosYComas++;
+    }
+  }
+  return puntosYComas > comas ? ";" : ",";
+}
+
+function parsearCSV(texto, delimitador) {
+  const filas = [];
+  let fila = [];
+  let campo = "";
+  let entreComillas = false;
+  const contenido = texto.replace(/^\uFEFF/, "");
+
+  for (let i = 0; i < contenido.length; i++) {
+    const caracter = contenido[i];
+    if (caracter === '"') {
+      if (entreComillas && contenido[i + 1] === '"') {
+        campo += '"';
+        i++;
+      } else {
+        entreComillas = !entreComillas;
+      }
+    } else if (!entreComillas && caracter === delimitador) {
+      fila.push(campo);
+      campo = "";
+    } else if (!entreComillas && (caracter === "\n" || caracter === "\r")) {
+      if (caracter === "\r" && contenido[i + 1] === "\n") i++;
+      fila.push(campo);
+      if (fila.some(valor => valor.trim() !== "")) filas.push(fila);
+      fila = [];
+      campo = "";
+    } else {
+      campo += caracter;
+    }
+  }
+
+  if (entreComillas) throw new Error("El archivo CSV tiene comillas sin cerrar.");
+  fila.push(campo);
+  if (fila.some(valor => valor.trim() !== "")) filas.push(fila);
+  return filas;
+}
+
+function convertirFilasCSVAGrupos(texto) {
+  const filas = parsearCSV(texto, detectarDelimitadorCSV(texto));
+  if (filas.length < 2) throw new Error("El archivo debe incluir encabezados y al menos una fila de datos.");
+
+  const encabezados = filas[0].map(normalizarTextoCSV);
+  const columnas = {
+    nombre: encabezados.indexOf("grupo"),
+    dia: encabezados.indexOf("dia"),
+    inicio: encabezados.indexOf("horainicio"),
+    fin: encabezados.indexOf("horafin"),
+    alumno: encabezados.indexOf("alumno")
+  };
+  if (Object.values(columnas).some(indice => indice < 0)) {
+    throw new Error("Faltan columnas. Usa: Grupo, Día, Hora inicio, Hora fin y Alumno.");
+  }
+
+  const diasPorNombre = Object.entries(NOMBRES_DIAS).reduce((resultado, [codigo, nombre]) => {
+    resultado[normalizarTextoCSV(codigo)] = codigo;
+    resultado[normalizarTextoCSV(nombre)] = codigo;
+    return resultado;
+  }, {});
+  const gruposImportados = new Map();
+
+  filas.slice(1).forEach((fila, indice) => {
+    const numeroFila = indice + 2;
+    const obtener = columna => (fila[columna] || "").trim();
+    const nombre = obtener(columnas.nombre);
+    const dia = diasPorNombre[normalizarTextoCSV(obtener(columnas.dia))];
+    const inicio = obtener(columnas.inicio);
+    const fin = obtener(columnas.fin);
+    const alumno = obtener(columnas.alumno);
+    if (!nombre || !dia || !/^\d{2}:\d{2}$/.test(inicio) || !/^\d{2}:\d{2}$/.test(fin) || inicio >= fin) {
+      throw new Error(`La fila ${numeroFila} tiene grupo, día u horario inválido.`);
+    }
+
+    const clave = `${dia}:${nombre.toLocaleLowerCase()}`;
+    let grupo = gruposImportados.get(clave);
+    if (!grupo) {
+      const existente = gruposConfigurados.find(item =>
+        item.dia === dia && item.nombre.toLocaleLowerCase() === nombre.toLocaleLowerCase()
+      );
+      grupo = { id: existente ? existente.id : crearIdGrupo(), nombre, dia, inicio, fin, alumnos: [] };
+      gruposImportados.set(clave, grupo);
+    } else if (grupo.inicio !== inicio || grupo.fin !== fin) {
+      throw new Error(`El horario del grupo "${nombre}" cambia entre filas (fila ${numeroFila}).`);
+    }
+
+    if (alumno && !grupo.alumnos.some(item => item.toLocaleLowerCase() === alumno.toLocaleLowerCase())) {
+      grupo.alumnos.push(alumno);
+    }
+  });
+
+  return Array.from(gruposImportados.values());
+}
+
+function escaparCampoCSV(valor) {
+  const texto = String(valor);
+  return /[;"\r\n]/.test(texto) ? `"${texto.replace(/"/g, '""')}"` : texto;
+}
+
+function descargarPlantillaGrupos() {
+  const encabezados = ["Grupo", "Día", "Hora inicio", "Hora fin", "Alumno"];
+  const filas = [encabezados];
+  gruposConfigurados.forEach(grupo => {
+    const alumnos = grupo.alumnos.length ? grupo.alumnos : [""];
+    alumnos.forEach(alumno => filas.push([
+      grupo.nombre,
+      NOMBRES_DIAS[grupo.dia],
+      grupo.inicio,
+      grupo.fin,
+      alumno
+    ]));
+  });
+
+  const contenido = "\uFEFF" + filas.map(fila => fila.map(escaparCampoCSV).join(";")).join("\r\n");
+  const enlace = document.createElement("a");
+  enlace.href = URL.createObjectURL(new Blob([contenido], { type: "text/csv;charset=utf-8" }));
+  enlace.download = "grupos-y-horarios.csv";
+  document.body.appendChild(enlace);
+  enlace.click();
+  enlace.remove();
+  setTimeout(() => URL.revokeObjectURL(enlace.href), 0);
+}
+
+function importarGruposCSV(input) {
+  const archivo = input.files && input.files[0];
+  if (!archivo) return;
+
+  const lector = new FileReader();
+  lector.onload = () => {
+    try {
+      const grupos = convertirFilasCSVAGrupos(String(lector.result || ""));
+      if (grupos.length === 0) throw new Error("No se encontraron grupos en el archivo.");
+      renderizarEditorGrupos(grupos);
+      alert(`Se cargaron ${grupos.length} grupos en el editor. Revisa los datos y pulsa "Guardar y Aplicar".`);
+    } catch (error) {
+      console.error("Error al importar grupos desde CSV", error);
+      alert(`No se pudo importar el archivo: ${error.message}`);
+    } finally {
+      input.value = "";
+    }
+  };
+  lector.onerror = () => {
+    console.error("Error al leer el archivo CSV", lector.error);
+    alert("No se pudo leer el archivo CSV.");
+    input.value = "";
+  };
+  lector.readAsText(archivo, "UTF-8");
+}
+
 function guardarConfiguracion() {
+  const gruposIngresados = leerGruposDesdeEditor();
+  if (gruposIngresados === null) return;
+
   const cantidadIngresada = document.getElementById("input-team-count").valueAsNumber;
   if (!Number.isInteger(cantidadIngresada) || cantidadIngresada < 1) {
     alert("La cantidad de equipos debe ser un número entero mayor que cero.");
@@ -398,6 +833,18 @@ function guardarConfiguracion() {
 
   cantidadEquipos = cantidadIngresada;
   minutosAntesDesarme = minutosIngresados;
+  gruposConfigurados = gruposIngresados;
+  renderizarSelectorGrupos();
+  renderizarEditorGrupos();
+  if (grupoActivoKey && gruposConfigurados.some(grupo => grupo.id === grupoActivoKey)) {
+    document.getElementById("group-select").value = grupoActivoKey;
+    cambiarGrupo();
+  } else if (grupoActivoKey) {
+    grupoActivoKey = null;
+    document.getElementById("group-select").value = "";
+    limpiarRelojClase();
+    document.getElementById("input-students").value = "";
+  }
   actualizarEquipos(cantidadEquipos);
   actualizarHoraDesarme();
   if (horaInicioClase && horaFinClase) {
@@ -454,7 +901,7 @@ function guardarEnLocalStorage() {
     imageUrl: document.getElementById("input-image-url").value,
     imageBase64: imagenLocalBase64,
     videoUrl: document.getElementById("input-video-url").value,
-    students: document.getElementById("input-students").value,
+    groups: gruposConfigurados,
     teamCount: cantidadEquipos,
     disassembleMinutes: minutosAntesDesarme,
     theme: temaActual,
@@ -468,6 +915,32 @@ function cargarConfiguracionGuardada() {
   if (savedConfig) {
     try {
       const config = JSON.parse(savedConfig);
+      if (Array.isArray(config.groups)) {
+        const gruposGuardados = config.groups.filter(grupo =>
+          grupo
+          && typeof grupo.id === "string"
+          && typeof grupo.nombre === "string"
+          && DIAS_SEMANA[grupo.dia]
+          && /^\d{2}:\d{2}$/.test(grupo.inicio)
+          && /^\d{2}:\d{2}$/.test(grupo.fin)
+          && grupo.inicio < grupo.fin
+          && Array.isArray(grupo.alumnos)
+        );
+        if (gruposGuardados.length !== config.groups.length) {
+          throw new Error("La configuración de grupos guardada contiene datos inválidos.");
+        }
+        gruposConfigurados = gruposGuardados.map(grupo => ({
+          ...grupo,
+          alumnos: grupo.alumnos.filter(alumno => typeof alumno === "string" && alumno.trim()).map(alumno => alumno.trim())
+        }));
+      } else {
+        gruposConfigurados = crearGruposPredeterminados();
+        const alumnosAnteriores = config.students !== undefined
+          ? parsearListaAlumnos(config.students)
+          : ALUMNOS_LISTA_ANTERIOR.split(",").map(alumno => alumno.trim());
+        const grupoAnterior = gruposConfigurados.find(grupo => grupo.id === "4A_VIE");
+        if (grupoAnterior) grupoAnterior.alumnos = alumnosAnteriores;
+      }
 
       if (config.practiceCode !== undefined) document.getElementById("input-practice-code").value = config.practiceCode;
       if (config.projectName !== undefined) document.getElementById("input-project-name").value = config.projectName;
@@ -475,7 +948,6 @@ function cargarConfiguracionGuardada() {
       if (config.notice !== undefined) document.getElementById("input-extra-notice").value = config.notice;
       if (config.imageUrl !== undefined) document.getElementById("input-image-url").value = config.imageUrl;
       if (config.videoUrl !== undefined) document.getElementById("input-video-url").value = config.videoUrl;
-      if (config.students !== undefined) document.getElementById("input-students").value = config.students;
       if (Number.isInteger(config.teamCount) && config.teamCount > 0) {
         cantidadEquipos = config.teamCount;
       }
@@ -533,4 +1005,6 @@ function cargarConfiguracionGuardada() {
       console.error("Error al cargar configuración guardada", e);
     }
   }
+  renderizarSelectorGrupos();
+  renderizarEditorGrupos();
 }
