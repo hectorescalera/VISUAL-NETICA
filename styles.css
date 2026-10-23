@@ -502,6 +502,35 @@ select {
   display: none;
 }
 
+.teams-section.collapsed .daily-roster {
+  display: none;
+}
+
+.daily-roster {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.daily-roster label {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}
+
+.daily-roster textarea {
+  width: 100%;
+  min-height: 44px;
+  max-height: 100px;
+  padding: 6px;
+  resize: vertical;
+  background: var(--bg-dark);
+  color: var(--text-main);
+  border: 1px solid var(--card-border);
+  font: inherit;
+  font-size: 0.8rem;
+}
+
 .teams-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
@@ -566,7 +595,7 @@ select {
   background: var(--card-bg);
   padding: 20px;
   border-radius: 10px;
-  width: 520px;
+  width: min(900px, 96vw);
   max-height: 90vh;
   overflow-y: auto;
   display: flex;
@@ -680,6 +709,117 @@ select {
   gap: 4px;
 }
 
+.groups-config {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+}
+
+.groups-config-heading,
+.group-config-card-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.groups-config-heading h3 {
+  font-size: 0.95rem;
+  color: var(--accent-blue);
+}
+
+.groups-config-heading p {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+}
+
+.groups-file-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+#group-import-file {
+  display: none;
+}
+
+.group-config-card {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin-top: 8px;
+  padding: 9px;
+  border: 1px solid var(--card-border);
+  border-radius: 7px;
+  background: var(--bg-dark);
+}
+
+.group-config-card-heading strong {
+  color: var(--accent-cyan);
+  font-size: 0.82rem;
+}
+
+.group-config-fields {
+  display: grid;
+  grid-template-columns: minmax(150px, 2fr) repeat(3, minmax(85px, 1fr));
+  gap: 8px;
+}
+
+.group-config-field {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.group-config-field label {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.group-config-field input,
+.group-config-field select,
+.group-config-field textarea {
+  width: 100%;
+  min-width: 0;
+  background: var(--card-bg);
+  color: var(--text-main);
+  border: 1px solid var(--card-border);
+  border-radius: 4px;
+  padding: 6px;
+  font: inherit;
+  font-size: 0.8rem;
+}
+
+.group-config-field textarea {
+  min-height: 54px;
+  resize: vertical;
+}
+
+.btn-secondary,
+.btn-remove-group {
+  padding: 6px 9px;
+  border: 1px solid var(--card-border);
+  border-radius: 5px;
+  background: var(--card-border);
+  color: var(--text-main);
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.btn-secondary:hover,
+.btn-remove-group:hover {
+  border-color: var(--accent-blue);
+  color: var(--accent-blue);
+}
+
+.add-group-button {
+  align-self: flex-start;
+}
+
 .modal-actions {
   display: flex;
   justify-content: flex-end;
@@ -704,4 +844,15 @@ select {
   border: none;
   cursor: pointer;
   border-radius: 6px;
+}
+
+@media (max-width: 600px) {
+  .groups-config-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .group-config-fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
