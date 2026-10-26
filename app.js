@@ -52,6 +52,7 @@ function crearGruposPredeterminados() {
 
 let gruposConfigurados = crearGruposPredeterminados();
 let grupoActivoKey = null;
+let grupoHorarioAutomaticoKey = null;
 let horaInicioClase = null;
 let horaDesarmeClase = null;
 let horaFinClase = null;
@@ -70,6 +71,7 @@ let temporizadorGuardadoAlumnos = null;
 document.addEventListener("DOMContentLoaded", () => {
   cargarEquiposGuardados();
   cargarConfiguracionGuardada();
+  revisarHorarioAutomatico();
 
   // Al editar el cuadro de alumnos, se guarda en la lista del grupo activo
   document.getElementById("input-students").addEventListener("input", () => {
@@ -80,6 +82,7 @@ document.addEventListener("DOMContentLoaded", () => {
   actualizarEquipos(cantidadEquipos);
   actualizarReloj();
   setInterval(actualizarReloj, 1000);
+  setInterval(revisarHorarioAutomatico, 1000);
 });
 
 function actualizarReloj() {
@@ -97,7 +100,29 @@ function actualizarReloj() {
   }
 }
 
-function cambiarGrupo() {
+function revisarHorarioAutomatico(ahora = new Date()) {
+  const diaActual = ahora.getDay();
+  const minutosActuales = ahora.getHours() * 60 + ahora.getMinutes();
+  const grupoEnHorario = gruposConfigurados.find(grupo => {
+    if (DIAS_SEMANA[grupo.dia] !== diaActual) return false;
+    const [inicioHoras, inicioMinutos] = grupo.inicio.split(":").map(Number);
+    const [finHoras, finMinutos] = grupo.fin.split(":").map(Number);
+    const minutosInicio = inicioHoras * 60 + inicioMinutos;
+    const minutosFin = finHoras * 60 + finMinutos;
+    return minutosActuales >= minutosInicio && minutosActuales < minutosFin;
+  });
+  const siguienteGrupoHorarioKey = grupoEnHorario ? grupoEnHorario.id : null;
+
+  if (siguienteGrupoHorarioKey === grupoHorarioAutomaticoKey) return;
+  grupoHorarioAutomaticoKey = siguienteGrupoHorarioKey;
+
+  if (grupoEnHorario) {
+    document.getElementById("group-select").value = grupoEnHorario.id;
+    cambiarGrupo(true);
+  }
+}
+
+function cambiarGrupo(cambioAutomatico = false) {
   const select = document.getElementById("group-select");
   grupoActivoKey = select.value;
   const grupoActivo = gruposConfigurados.find(grupo => grupo.id === grupoActivoKey);
@@ -125,9 +150,19 @@ function cambiarGrupo() {
 
   document.getElementById("input-students").value = grupoActivo.alumnos.join("\n");
 
-  // Muestra los equipos guardados de este grupo (o vacíos si aún no se sortean)
-  const guardados = equiposPorGrupo[grupoActivoKey];
-  mostrarEquipos(guardados && guardados.length === cantidadEquipos ? guardados : []);
+  if (cambioAutomatico) {
+    delete equiposPorGrupo[grupoActivoKey];
+    try {
+      localStorage.setItem("robotica_equipos", JSON.stringify(equiposPorGrupo));
+    } catch (e) {
+      console.error("No se pudieron reiniciar los equipos del grupo", e);
+    }
+    mostrarEquipos([]);
+  } else {
+    // Muestra los equipos guardados de este grupo (o vacíos si aún no se sortean)
+    const guardados = equiposPorGrupo[grupoActivoKey];
+    mostrarEquipos(guardados && guardados.length === cantidadEquipos ? guardados : []);
+  }
 
   actualizarHoraDesarme();
 
