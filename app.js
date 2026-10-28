@@ -704,6 +704,7 @@ function detectarDelimitadorCSV(texto) {
   const primeraLinea = texto.split(/\r?\n/, 1)[0];
   let comas = 0;
   let puntosYComas = 0;
+  let tabulaciones = 0;
   let entreComillas = false;
   for (let i = 0; i < primeraLinea.length; i++) {
     if (primeraLinea[i] === '"') {
@@ -713,8 +714,11 @@ function detectarDelimitadorCSV(texto) {
       comas++;
     } else if (!entreComillas && primeraLinea[i] === ";") {
       puntosYComas++;
+    } else if (!entreComillas && primeraLinea[i] === "\t") {
+      tabulaciones++;
     }
   }
+  if (tabulaciones > Math.max(comas, puntosYComas)) return "\t";
   return puntosYComas > comas ? ";" : ",";
 }
 
@@ -816,33 +820,26 @@ function convertirFilasCSVAGrupos(texto) {
 
 function escaparCampoCSV(valor) {
   const texto = String(valor);
-  return /[;"\r\n]/.test(texto) ? `"${texto.replace(/"/g, '""')}"` : texto;
+  return /[;"\t\r\n]/.test(texto) ? `"${texto.replace(/"/g, '""')}"` : texto;
 }
 
 function descargarPlantillaGrupos() {
-  const cantidadColumnasAlumnos = Math.max(1, ...gruposConfigurados.map(grupo => grupo.alumnos.length));
-  const encabezados = [
-    "Grupo",
-    "Día",
-    "Hora inicio",
-    "Hora fin",
-    ...Array.from({ length: cantidadColumnasAlumnos }, (_, indice) => `Alumno ${indice + 1}`)
-  ];
-  const filas = [
-    encabezados,
-    ...gruposConfigurados.map(grupo => [
+  const filas = [["Grupo", "Día", "Hora inicio", "Hora fin", "Alumno"]];
+  gruposConfigurados.forEach(grupo => {
+    const alumnos = grupo.alumnos.length ? grupo.alumnos : [""];
+    alumnos.forEach(alumno => filas.push([
       grupo.nombre,
       NOMBRES_DIAS[grupo.dia],
       grupo.inicio,
       grupo.fin,
-      ...Array.from({ length: cantidadColumnasAlumnos }, (_, indice) => grupo.alumnos[indice] || "")
-    ])
-  ];
+      alumno
+    ]));
+  });
 
-  const contenido = "\uFEFF" + filas.map(fila => fila.map(escaparCampoCSV).join(";")).join("\r\n");
+  const contenido = "\uFEFF" + filas.map(fila => fila.map(escaparCampoCSV).join("\t")).join("\r\n");
   const enlace = document.createElement("a");
-  enlace.href = URL.createObjectURL(new Blob([contenido], { type: "text/csv;charset=utf-8" }));
-  enlace.download = "grupos-y-horarios.csv";
+  enlace.href = URL.createObjectURL(new Blob([contenido], { type: "text/tab-separated-values;charset=utf-8" }));
+  enlace.download = "grupos-y-horarios.tsv";
   document.body.appendChild(enlace);
   enlace.click();
   enlace.remove();

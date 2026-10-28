@@ -168,12 +168,12 @@
         <div class="groups-config-heading">
           <div>
             <h3>Grupos, horarios y alumnos</h3>
-            <p>Configura el ciclo escolar aquí. El grupo se selecciona según el horario; al cambiar automáticamente, sus equipos quedan sin asignar. En el CSV cada fila representa un grupo y puedes llenar un alumno por columna.</p>
+            <p>Descarga una tabla para Excel con columnas separadas y un alumno por fila; edítala y luego importa el archivo. También puedes importar CSV anteriores.</p>
           </div>
           <div class="groups-file-actions">
-            <button type="button" class="btn-secondary" onclick="descargarPlantillaGrupos()">Descargar CSV</button>
-            <button type="button" class="btn-secondary" onclick="document.getElementById('group-import-file').click()">Importar CSV</button>
-            <input type="file" id="group-import-file" accept=".csv,text/csv" onchange="importarGruposCSV(this)">
+            <button type="button" class="btn-secondary" onclick="descargarPlantillaGrupos()">Descargar tabla para Excel</button>
+            <button type="button" class="btn-secondary" onclick="document.getElementById('group-import-file').click()">Importar tabla</button>
+            <input type="file" id="group-import-file" accept=".csv,.tsv,text/csv,text/tab-separated-values" onchange="importarGruposCSV(this)">
           </div>
         </div>
         <div id="groups-config-list"></div>
