@@ -818,12 +818,54 @@ function convertirFilasCSVAGrupos(texto) {
   return Array.from(gruposImportados.values());
 }
 
+function normalizarHoraImportada(valor) {
+  if (typeof valor === "number" && valor >= 0 && valor < 1) {
+    const minutosTotales = Math.round(valor * 1440) % 1440;
+    return `${String(Math.floor(minutosTotales / 60)).padStart(2, "0")}:${String(minutosTotales % 60).padStart(2, "0")}`;
+  }
+
+  const coincidencia = String(valor || "").trim().match(/^(\d{1,2}):(\d{2})(?:\s*(AM|PM))?$/i);
+  if (!coincidencia) return String(valor || "").trim();
+
+  let horas = Number(coincidencia[1]);
+  const minutos = Number(coincidencia[2]);
+  const periodo = coincidencia[3] && coincidencia[3].toUpperCase();
+  if (minutos > 59 || (periodo && (horas < 1 || horas > 12)) || (!periodo && horas > 23)) {
+    return String(valor).trim();
+  }
+  if (periodo) horas = (horas % 12) + (periodo === "PM" ? 12 : 0);
+  return `${String(horas).padStart(2, "0")}:${String(minutos).padStart(2, "0")}`;
+}
+
+function convertirFilasExcelAGrupos(filas) {
+  if (filas.length < 2) throw new Error("El archivo debe incluir encabezados y al menos una fila de datos.");
+  const encabezados = filas[0].map(encabezado => normalizarTextoCSV(encabezado).replace(/\s+/g, ""));
+  const columnaInicio = encabezados.indexOf("horainicio");
+  const columnaFin = encabezados.indexOf("horafin");
+  if (columnaInicio < 0 || columnaFin < 0) {
+    throw new Error("Faltan las columnas Hora inicio y Hora fin en la hoja de cálculo.");
+  }
+
+  const filasTSV = filas.map(fila => {
+    const celdas = [...fila];
+    celdas[columnaInicio] = normalizarHoraImportada(celdas[columnaInicio]);
+    celdas[columnaFin] = normalizarHoraImportada(celdas[columnaFin]);
+    return celdas.map(escaparCampoCSV).join("\t");
+  });
+  return convertirFilasCSVAGrupos(filasTSV.join("\r\n"));
+}
+
 function escaparCampoCSV(valor) {
   const texto = String(valor);
   return /[;"\t\r\n]/.test(texto) ? `"${texto.replace(/"/g, '""')}"` : texto;
 }
 
 function descargarPlantillaGrupos() {
+  if (!window.XLSX) {
+    alert("No se pudo cargar el componente de Excel. Revisa tu conexión a internet e inténtalo de nuevo.");
+    return;
+  }
+
   const filas = [["Grupo", "Día", "Hora inicio", "Hora fin", "Alumno"]];
   gruposConfigurados.forEach(grupo => {
     const alumnos = grupo.alumnos.length ? grupo.alumnos : [""];
@@ -836,24 +878,34 @@ function descargarPlantillaGrupos() {
     ]));
   });
 
-  const contenido = "\uFEFF" + filas.map(fila => fila.map(escaparCampoCSV).join("\t")).join("\r\n");
-  const enlace = document.createElement("a");
-  enlace.href = URL.createObjectURL(new Blob([contenido], { type: "text/tab-separated-values;charset=utf-8" }));
-  enlace.download = "grupos-y-horarios.tsv";
-  document.body.appendChild(enlace);
-  enlace.click();
-  enlace.remove();
-  setTimeout(() => URL.revokeObjectURL(enlace.href), 0);
+  const hoja = window.XLSX.utils.aoa_to_sheet(filas);
+  hoja["!cols"] = [{ wch: 20 }, { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 28 }];
+  hoja["!autofilter"] = { ref: `A1:E${filas.length}` };
+  hoja["!freeze"] = { xSplit: 0, ySplit: 1, topLeftCell: "A2", activePane: "bottomLeft", state: "frozen" };
+  const libro = window.XLSX.utils.book_new();
+  window.XLSX.utils.book_append_sheet(libro, hoja, "Grupos y alumnos");
+  window.XLSX.writeFile(libro, "grupos-y-horarios.xlsx");
 }
 
 function importarGruposCSV(input) {
   const archivo = input.files && input.files[0];
   if (!archivo) return;
 
+  const esExcel = /\.xlsx$/i.test(archivo.name);
   const lector = new FileReader();
   lector.onload = () => {
     try {
-      const grupos = convertirFilasCSVAGrupos(String(lector.result || ""));
+      let grupos;
+      if (esExcel) {
+        if (!window.XLSX) throw new Error("No se pudo cargar el componente de Excel. Revisa tu conexión a internet.");
+        const libro = window.XLSX.read(lector.result, { type: "array" });
+        const nombreHoja = libro.SheetNames[0];
+        if (!nombreHoja) throw new Error("El archivo de Excel no contiene hojas.");
+        const filas = window.XLSX.utils.sheet_to_json(libro.Sheets[nombreHoja], { header: 1, raw: false, defval: "" });
+        grupos = convertirFilasExcelAGrupos(filas);
+      } else {
+        grupos = convertirFilasCSVAGrupos(String(lector.result || ""));
+      }
       if (grupos.length === 0) throw new Error("No se encontraron grupos en el archivo.");
       renderizarEditorGrupos(grupos);
       alert(`Se cargaron ${grupos.length} grupos en el editor. Revisa los datos y pulsa "Guardar y Aplicar".`);
@@ -869,7 +921,8 @@ function importarGruposCSV(input) {
     alert("No se pudo leer el archivo CSV.");
     input.value = "";
   };
-  lector.readAsText(archivo, "UTF-8");
+  if (esExcel) lector.readAsArrayBuffer(archivo);
+  else lector.readAsText(archivo, "UTF-8");
 }
 
 function guardarConfiguracion() {

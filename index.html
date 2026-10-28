@@ -8,6 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Nunito+Sans:wght@400;600;700;800&family=Orbitron:wght@600;800;900&family=Poppins:wght@400;500;600;700&family=Roboto+Mono:wght@500;700&family=Source+Sans+3:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <script defer src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 </head>
 <body class="theme-dark font-orbitron">
 
@@ -168,12 +169,12 @@
         <div class="groups-config-heading">
           <div>
             <h3>Grupos, horarios y alumnos</h3>
-            <p>Descarga una tabla para Excel con columnas separadas y un alumno por fila; edítala y luego importa el archivo. También puedes importar CSV anteriores.</p>
+            <p>Descarga un archivo .xlsx para abrirlo y editarlo en Excel o Google Sheets; al terminar, impórtalo aquí. También puedes importar archivos CSV anteriores.</p>
           </div>
           <div class="groups-file-actions">
-            <button type="button" class="btn-secondary" onclick="descargarPlantillaGrupos()">Descargar tabla para Excel</button>
-            <button type="button" class="btn-secondary" onclick="document.getElementById('group-import-file').click()">Importar tabla</button>
-            <input type="file" id="group-import-file" accept=".csv,.tsv,text/csv,text/tab-separated-values" onchange="importarGruposCSV(this)">
+            <button type="button" class="btn-secondary" onclick="descargarPlantillaGrupos()">Descargar Excel (.xlsx)</button>
+            <button type="button" class="btn-secondary" onclick="document.getElementById('group-import-file').click()">Importar Excel o CSV</button>
+            <input type="file" id="group-import-file" accept=".xlsx,.csv,.tsv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,text/tab-separated-values" onchange="importarGruposCSV(this)">
           </div>
         </div>
         <div id="groups-config-list"></div>
