@@ -87,10 +87,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
 function actualizarReloj() {
   const ahora = new Date();
-  const horas = String(ahora.getHours()).padStart(2, '0');
-  const minutos = String(ahora.getMinutes()).padStart(2, '0');
-  const segundos = String(ahora.getSeconds()).padStart(2, '0');
-  document.getElementById("main-clock").innerText = `${horas}:${minutos}:${segundos}`;
+  document.getElementById("main-clock").innerText = formatearHora12(
+    ahora.getHours(),
+    ahora.getMinutes(),
+    ahora.getSeconds()
+  );
 
   const opcionesFecha = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
   document.getElementById("current-date").innerText = ahora.toLocaleDateString('es-MX', opcionesFecha);
@@ -281,9 +282,22 @@ function limpiarRelojClase() {
 }
 
 function formatearHoraCorta(dateObj) {
-  const h = String(dateObj.getHours()).padStart(2, '0');
-  const m = String(dateObj.getMinutes()).padStart(2, '0');
-  return `${h}:${m}`;
+  return formatearHora12(dateObj.getHours(), dateObj.getMinutes());
+}
+
+function formatearHoraProgramada(hora) {
+  const [horas, minutos] = hora.split(":").map(Number);
+  return formatearHora12(horas, minutos);
+}
+
+function formatearHora12(horas, minutos, segundos) {
+  const hora12 = String(horas % 12 || 12).padStart(2, "0");
+  const minutosFormateados = String(minutos).padStart(2, "0");
+  const segundosFormateados = segundos === undefined
+    ? ""
+    : `:${String(segundos).padStart(2, "0")}`;
+  const periodo = horas >= 12 ? "PM" : "AM";
+  return `${hora12}:${minutosFormateados}${segundosFormateados} ${periodo}`;
 }
 
 // CONTROL DE EQUIPOS
@@ -537,7 +551,7 @@ function renderizarSelectorGrupos() {
     gruposDelDia.forEach(grupo => {
       const opcion = document.createElement("option");
       opcion.value = grupo.id;
-      opcion.innerText = `${grupo.nombre} (${grupo.inicio} - ${grupo.fin})`;
+      opcion.innerText = `${grupo.nombre} (${formatearHoraProgramada(grupo.inicio)} - ${formatearHoraProgramada(grupo.fin)})`;
       optgroup.appendChild(opcion);
     });
     select.appendChild(optgroup);
@@ -744,16 +758,19 @@ function convertirFilasCSVAGrupos(texto) {
   const filas = parsearCSV(texto, detectarDelimitadorCSV(texto));
   if (filas.length < 2) throw new Error("El archivo debe incluir encabezados y al menos una fila de datos.");
 
-  const encabezados = filas[0].map(normalizarTextoCSV);
+  const encabezados = filas[0].map(encabezado => normalizarTextoCSV(encabezado).replace(/\s+/g, ""));
   const columnas = {
     nombre: encabezados.indexOf("grupo"),
     dia: encabezados.indexOf("dia"),
     inicio: encabezados.indexOf("horainicio"),
     fin: encabezados.indexOf("horafin"),
-    alumno: encabezados.indexOf("alumno")
+    alumnos: encabezados.reduce((resultado, encabezado, indice) => {
+      if (encabezado === "alumno" || /^alumno\s*\d+$/.test(encabezado)) resultado.push(indice);
+      return resultado;
+    }, [])
   };
-  if (Object.values(columnas).some(indice => indice < 0)) {
-    throw new Error("Faltan columnas. Usa: Grupo, Día, Hora inicio, Hora fin y Alumno.");
+  if ([columnas.nombre, columnas.dia, columnas.inicio, columnas.fin].some(indice => indice < 0)) {
+    throw new Error("Faltan columnas. Usa: Grupo, Día, Hora inicio y Hora fin; los alumnos son opcionales.");
   }
 
   const diasPorNombre = Object.entries(NOMBRES_DIAS).reduce((resultado, [codigo, nombre]) => {
@@ -770,7 +787,7 @@ function convertirFilasCSVAGrupos(texto) {
     const dia = diasPorNombre[normalizarTextoCSV(obtener(columnas.dia))];
     const inicio = obtener(columnas.inicio);
     const fin = obtener(columnas.fin);
-    const alumno = obtener(columnas.alumno);
+    const alumnos = columnas.alumnos.map(obtener).filter(Boolean);
     if (!nombre || !dia || !/^\d{2}:\d{2}$/.test(inicio) || !/^\d{2}:\d{2}$/.test(fin) || inicio >= fin) {
       throw new Error(`La fila ${numeroFila} tiene grupo, día u horario inválido.`);
     }
@@ -787,9 +804,11 @@ function convertirFilasCSVAGrupos(texto) {
       throw new Error(`El horario del grupo "${nombre}" cambia entre filas (fila ${numeroFila}).`);
     }
 
-    if (alumno && !grupo.alumnos.some(item => item.toLocaleLowerCase() === alumno.toLocaleLowerCase())) {
-      grupo.alumnos.push(alumno);
-    }
+    alumnos.forEach(alumno => {
+      if (!grupo.alumnos.some(item => item.toLocaleLowerCase() === alumno.toLocaleLowerCase())) {
+        grupo.alumnos.push(alumno);
+      }
+    });
   });
 
   return Array.from(gruposImportados.values());
@@ -801,18 +820,24 @@ function escaparCampoCSV(valor) {
 }
 
 function descargarPlantillaGrupos() {
-  const encabezados = ["Grupo", "Día", "Hora inicio", "Hora fin", "Alumno"];
-  const filas = [encabezados];
-  gruposConfigurados.forEach(grupo => {
-    const alumnos = grupo.alumnos.length ? grupo.alumnos : [""];
-    alumnos.forEach(alumno => filas.push([
+  const cantidadColumnasAlumnos = Math.max(1, ...gruposConfigurados.map(grupo => grupo.alumnos.length));
+  const encabezados = [
+    "Grupo",
+    "Día",
+    "Hora inicio",
+    "Hora fin",
+    ...Array.from({ length: cantidadColumnasAlumnos }, (_, indice) => `Alumno ${indice + 1}`)
+  ];
+  const filas = [
+    encabezados,
+    ...gruposConfigurados.map(grupo => [
       grupo.nombre,
       NOMBRES_DIAS[grupo.dia],
       grupo.inicio,
       grupo.fin,
-      alumno
-    ]));
-  });
+      ...Array.from({ length: cantidadColumnasAlumnos }, (_, indice) => grupo.alumnos[indice] || "")
+    ])
+  ];
 
   const contenido = "\uFEFF" + filas.map(fila => fila.map(escaparCampoCSV).join(";")).join("\r\n");
   const enlace = document.createElement("a");

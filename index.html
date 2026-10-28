@@ -24,31 +24,31 @@
       <select id="group-select" onchange="cambiarGrupo()">
         <option value="">-- Seleccionar Grupo --</option>
         <optgroup label="Lunes">
-          <option value="6R_LUN">6° R (09:00 - 10:20)</option>
-          <option value="4B_LUN">4° B (12:00 - 13:20)</option>
+          <option value="6R_LUN">6° R (09:00 AM - 10:20 AM)</option>
+          <option value="4B_LUN">4° B (12:00 PM - 01:20 PM)</option>
         </optgroup>
         <optgroup label="Martes">
-          <option value="4V_MAR">4° V (07:40 - 09:00)</option>
-          <option value="6V_MAR">6° V (09:00 - 10:20)</option>
-          <option value="3A_MAR">3° A (11:20 - 12:40)</option>
-          <option value="4R_MAR">4° R (12:40 - 14:00)</option>
+          <option value="4V_MAR">4° V (07:40 AM - 09:00 AM)</option>
+          <option value="6V_MAR">6° V (09:00 AM - 10:20 AM)</option>
+          <option value="3A_MAR">3° A (11:20 AM - 12:40 PM)</option>
+          <option value="4R_MAR">4° R (12:40 PM - 02:00 PM)</option>
         </optgroup>
         <optgroup label="Miércoles">
-          <option value="3B_MIE">3° B (07:40 - 09:00)</option>
-          <option value="6B_MIE">6° B (09:00 - 10:20)</option>
-          <option value="3N_MIE">3° N (11:20 - 12:40)</option>
-          <option value="3R_MIE">3° R (12:40 - 14:00)</option>
+          <option value="3B_MIE">3° B (07:40 AM - 09:00 AM)</option>
+          <option value="6B_MIE">6° B (09:00 AM - 10:20 AM)</option>
+          <option value="3N_MIE">3° N (11:20 AM - 12:40 PM)</option>
+          <option value="3R_MIE">3° R (12:40 PM - 02:00 PM)</option>
         </optgroup>
         <optgroup label="Jueves">
-          <option value="5B_JUE">5° B (07:40 - 09:00)</option>
-          <option value="5V_JUE">5° V (09:00 - 10:20)</option>
-          <option value="5A_JUE">5° A (11:20 - 12:40)</option>
-          <option value="5R_JUE">5° R (12:40 - 14:00)</option>
+          <option value="5B_JUE">5° B (07:40 AM - 09:00 AM)</option>
+          <option value="5V_JUE">5° V (09:00 AM - 10:20 AM)</option>
+          <option value="5A_JUE">5° A (11:20 AM - 12:40 PM)</option>
+          <option value="5R_JUE">5° R (12:40 PM - 02:00 PM)</option>
         </optgroup>
         <optgroup label="Viernes">
-          <option value="4A_VIE">4° A (09:00 - 10:20)</option>
-          <option value="6A_VIE">6° A (11:20 - 12:40)</option>
-          <option value="3V_VIE">3° V (12:40 - 14:00)</option>
+          <option value="4A_VIE">4° A (09:00 AM - 10:20 AM)</option>
+          <option value="6A_VIE">6° A (11:20 AM - 12:40 PM)</option>
+          <option value="3V_VIE">3° V (12:40 PM - 02:00 PM)</option>
         </optgroup>
       </select>
       <button class="btn-icon-only" onclick="abrirModalConfig()" title="Configuración">⚙️</button>
@@ -168,7 +168,7 @@
         <div class="groups-config-heading">
           <div>
             <h3>Grupos, horarios y alumnos</h3>
-            <p>Configura el ciclo escolar aquí. El grupo se selecciona según el horario; al cambiar automáticamente, sus equipos quedan sin asignar. En el CSV cada fila representa un alumno de un grupo.</p>
+            <p>Configura el ciclo escolar aquí. El grupo se selecciona según el horario; al cambiar automáticamente, sus equipos quedan sin asignar. En el CSV cada fila representa un grupo y puedes llenar un alumno por columna.</p>
           </div>
           <div class="groups-file-actions">
             <button type="button" class="btn-secondary" onclick="descargarPlantillaGrupos()">Descargar CSV</button>
