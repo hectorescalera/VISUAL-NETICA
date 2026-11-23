@@ -65,22 +65,49 @@ let minutosAntesDesarme = 8;
 
 // REGISTRO DE EQUIPOS POR SESIÓN Y TEMPORIZADOR DE GUARDADO DE ALUMNOS
 const CLAVE_REGISTRO_EQUIPOS = "robotica_historial_equipos";
+const CLAVE_REGISTRO_ASISTENCIA = "robotica_historial_asistencia";
+const CLAVE_REGISTRO_EVALUACION = "robotica_historial_evaluacion";
+const ESTADOS_EQUIPO_EVALUACION = ["pendiente", "terminado", "no_terminado"];
+const ESTADOS_ASISTENCIA = [
+  { valor: "", etiqueta: "Sin marcar", marca: "□", clase: "sin-marcar" },
+  { valor: "presente", etiqueta: "Presente", marca: "✓", clase: "presente" },
+  { valor: "falta", etiqueta: "Falta", marca: "×", clase: "falta" },
+  { valor: "justificada", etiqueta: "Justificada", marca: "/", clase: "justificada" }
+];
+const ESTADOS_ASISTENCIA_ANTERIORES = [
+  { valor: "falta", etiqueta: "Falta (registro anterior)", marca: "×", clase: "falta" },
+  { valor: "retardo", etiqueta: "Retardo (registro anterior)", marca: "R", clase: "retardo" }
+];
 let historialEquipos = [];
 let equiposActuales = [];
 let equiposActualesFijados = false;
 let claveSesionEquipos = null;
+let historialAsistencia = [];
+let asistenciaActual = new Map();
+let asistenciaTomada = false;
+let modoAsistenciaActivo = false;
+let historialEvaluacion = [];
+let resultadosEquiposActuales = new Map();
+let calificacionesManualesActuales = new Map();
+let modoEvaluacionActivo = false;
 let temporizadorGuardadoAlumnos = null;
 
 // INICIALIZACIÓN Y CARGA DE LOCALSTORAGE
 document.addEventListener("DOMContentLoaded", () => {
   cargarHistorialEquipos();
+  cargarHistorialAsistencia();
+  cargarHistorialEvaluacion();
   cargarConfiguracionGuardada();
   revisarHorarioAutomatico();
+  actualizarResumenAsistencia();
+  actualizarControlesEvaluacion();
+  renderizarHistorialAsistencia();
 
   // Al editar el cuadro de alumnos, se guarda en la lista del grupo activo
   document.getElementById("input-students").addEventListener("input", () => {
     clearTimeout(temporizadorGuardadoAlumnos);
     temporizadorGuardadoAlumnos = setTimeout(guardarAlumnosDelGrupoActivo, 500);
+    actualizarResumenAsistencia();
   });
 
   actualizarEquipos(cantidadEquipos);
@@ -128,6 +155,12 @@ function revisarHorarioAutomatico(ahora = new Date()) {
 }
 
 function cambiarGrupo() {
+  if (modoAsistenciaActivo && !finalizarAsistenciaActual()) {
+    document.getElementById("group-select").value = grupoActivoKey || "";
+    return;
+  }
+  modoEvaluacionActivo = false;
+
   const select = document.getElementById("group-select");
   grupoActivoKey = select.value;
   const grupoActivo = gruposConfigurados.find(grupo => grupo.id === grupoActivoKey);
@@ -136,9 +169,17 @@ function cambiarGrupo() {
     claveSesionEquipos = null;
     equiposActuales = [];
     equiposActualesFijados = false;
+    asistenciaActual = new Map();
+    asistenciaTomada = false;
+    modoAsistenciaActivo = false;
+    resultadosEquiposActuales = new Map();
+    calificacionesManualesActuales = new Map();
     limpiarRelojClase();
     document.getElementById("input-students").value = "";
     mostrarEquipos([]);
+    actualizarResumenAsistencia();
+    actualizarControlesEvaluacion();
+    renderizarHistorialAsistencia();
     actualizarEstadoEquipos("Selecciona un grupo para sortear o fijar equipos.");
     return;
   }
@@ -158,9 +199,12 @@ function cambiarGrupo() {
   }
 
   document.getElementById("input-students").value = grupoActivo.alumnos.join("\n");
+  document.querySelector(".daily-roster").open = true;
 
   claveSesionEquipos = crearClaveSesionEquipos(grupoActivo, horaInicioClase);
   cargarEquiposSesionActual();
+  cargarAsistenciaSesionActual();
+  cargarEvaluacionSesionActual();
 
   actualizarHoraDesarme();
 
@@ -303,7 +347,12 @@ function toggleSeccionEquipos() {
   const arrow = document.getElementById("toggle-arrow");
   actualizarEquipos(cantidadEquipos);
   section.classList.toggle("collapsed");
-  if (section.classList.contains("collapsed")) {
+  const seccionColapsada = section.classList.contains("collapsed");
+  document.body.classList.toggle("teams-expanded", !seccionColapsada);
+  if (!seccionColapsada && equiposActuales.some(equipo => equipo.length > 0)) {
+    document.querySelector(".daily-roster").open = false;
+  }
+  if (seccionColapsada) {
     arrow.innerText = "▲ Mostrar Equipos";
   } else {
     arrow.innerText = "▼ Ocultar Equipos";
@@ -325,7 +374,10 @@ function actualizarEquipos(cantidad, conservarAlumnos = true) {
 
   const alumnos = conservarAlumnos
     ? Array.from(grid.querySelectorAll(".team-members-list li"))
-      .map(item => item.innerText)
+      .map(item => {
+        const nombre = item.querySelector(".team-member-name");
+        return nombre ? nombre.innerText : item.innerText;
+      })
       .filter(nombre => nombre !== "Sin asignar")
     : [];
 
@@ -352,14 +404,20 @@ function actualizarEquipos(cantidad, conservarAlumnos = true) {
     const equipo = (index % cantidad) + 1;
     const list = document.getElementById(`team-${equipo}`);
     const item = document.createElement("li");
-    item.innerText = alumno;
+    const nombre = document.createElement("span");
+    nombre.className = "team-member-name";
+    nombre.innerText = alumno;
+    item.appendChild(nombre);
     list.appendChild(item);
   });
 
   grid.querySelectorAll(".team-members-list").forEach(list => {
     if (list.children.length === 0) {
       const item = document.createElement("li");
-      item.innerText = "Sin asignar";
+      const nombre = document.createElement("span");
+      nombre.className = "team-member-name";
+      nombre.innerText = "Sin asignar";
+      item.appendChild(nombre);
       list.appendChild(item);
     }
   });
@@ -477,7 +535,9 @@ function mostrarEquipos(equipos) {
 
     const title = document.createElement("div");
     title.className = "team-title";
-    title.innerText = `Equipo ${n}`;
+    const titleText = document.createElement("span");
+    titleText.innerText = `Equipo ${n}`;
+    title.append(titleText, crearControlResultadoEquipo(n));
 
     const list = document.createElement("ul");
     list.className = "team-members-list";
@@ -486,7 +546,14 @@ function mostrarEquipos(equipos) {
     const miembros = equipos[n - 1] || [];
     (miembros.length ? miembros : ["Sin asignar"]).forEach(nombre => {
       const li = document.createElement("li");
-      li.innerText = nombre;
+      const nombreAlumno = document.createElement("span");
+      nombreAlumno.className = "team-member-name";
+      nombreAlumno.innerText = nombre;
+      li.appendChild(nombreAlumno);
+      if (nombre !== "Sin asignar") {
+        li.appendChild(crearMarcaAsistencia(nombre));
+        li.appendChild(crearControlCalificacion(nombre, n));
+      }
       list.appendChild(li);
     });
 
@@ -537,9 +604,11 @@ function reiniciarEquiposSesion() {
     if (!guardarRegistroEquipos(registroReiniciado)) return;
   }
 
+  if (!reiniciarResultadosEquiposEvaluacion()) return;
   equiposActuales = [];
   equiposActualesFijados = false;
   mostrarEquipos([]);
+  guardarSnapshotEvaluacionSiExiste();
   actualizarEstadoEquipos(
     registro
       ? "Equipos reiniciados para esta sesión. El registro anterior sigue en el historial."
@@ -577,6 +646,11 @@ function renderizarHistorialEquipos() {
   registros.forEach(registro => {
     const detalle = document.createElement("details");
     detalle.className = "team-history-record";
+    const registroAsistencia = historialAsistencia.find(item => item.clave === registro.clave);
+    const asistenciaCerrada = Boolean(registroAsistencia && registroAsistencia.tomada !== false);
+    const estadosAsistencia = new Map(
+      registroAsistencia ? registroAsistencia.marcas.map(marca => [marca.alumno, marca.estado]) : []
+    );
 
     const fecha = new Date(`${registro.fecha}T00:00:00`);
     const fechaTexto = fecha.toLocaleDateString("es-MX", {
@@ -597,13 +671,706 @@ function renderizarHistorialEquipos() {
       const equipo = document.createElement("section");
       const titulo = document.createElement("strong");
       titulo.innerText = `Equipo ${indice + 1}`;
-      const nombres = document.createElement("p");
-      nombres.innerText = miembros.length ? miembros.join(", ") : "Sin asignar";
-      equipo.append(titulo, nombres);
+      const listaMiembros = document.createElement("div");
+      listaMiembros.className = "team-history-members";
+
+      if (miembros.length === 0) {
+        const vacio = document.createElement("p");
+        vacio.innerText = "Sin asignar";
+        listaMiembros.appendChild(vacio);
+      } else {
+        miembros.forEach(alumno => {
+          const fila = document.createElement("div");
+          fila.className = "team-history-member";
+          const nombre = document.createElement("span");
+          nombre.className = "team-history-member-name";
+          nombre.innerText = alumno;
+          fila.appendChild(nombre);
+
+          const estado = estadosAsistencia.get(alumno) || "";
+          if (asistenciaCerrada || estado) {
+            const estadoInfo = obtenerEstadoAsistencia(estado, asistenciaCerrada);
+            if (estadoInfo.clase === "falta") fila.classList.add("is-absent");
+            fila.appendChild(crearIndicadorAsistencia(estado, asistenciaCerrada, true));
+          }
+
+          listaMiembros.appendChild(fila);
+        });
+      }
+
+      equipo.append(titulo, listaMiembros);
       equipos.appendChild(equipo);
     });
 
     detalle.append(resumen, metadatos, equipos);
+    lista.appendChild(detalle);
+  });
+}
+
+function alternarModoAsistencia() {
+  if (!claveSesionEquipos) {
+    alert("Selecciona un grupo antes de tomar asistencia.");
+    return;
+  }
+
+  if (modoAsistenciaActivo) {
+    finalizarAsistenciaActual();
+    return;
+  }
+
+  if (!equiposActuales.some(equipo => equipo.length > 0)) {
+    alert("Primero sortea o carga los equipos para tomar asistencia junto a los nombres.");
+    return;
+  }
+
+  const seccion = document.getElementById("teams-section");
+  if (seccion.classList.contains("collapsed")) {
+    seccion.classList.remove("collapsed");
+    document.body.classList.add("teams-expanded");
+    document.getElementById("toggle-arrow").innerText = "▼ Ocultar Equipos";
+  }
+  document.querySelector(".daily-roster").open = false;
+
+  modoAsistenciaActivo = true;
+  actualizarResumenAsistencia();
+  mostrarEquipos(equiposActuales);
+}
+
+function abrirHistorialAsistencia() {
+  renderizarHistorialAsistencia();
+  document.getElementById("attendance-history-modal").classList.remove("hidden");
+}
+
+function cerrarHistorialAsistencia() {
+  document.getElementById("attendance-history-modal").classList.add("hidden");
+}
+
+// ASISTENCIA POR GRUPO Y FECHA
+function cargarHistorialAsistencia() {
+  try {
+    const guardado = localStorage.getItem(CLAVE_REGISTRO_ASISTENCIA);
+    const registros = guardado ? JSON.parse(guardado) : [];
+    if (!Array.isArray(registros)) {
+      throw new Error("El historial de asistencia no tiene el formato esperado.");
+    }
+
+    historialAsistencia = registros.filter(esRegistroAsistenciaValido);
+    if (historialAsistencia.length !== registros.length) {
+      console.error("Se omitieron registros de asistencia con datos inválidos.");
+    }
+  } catch (e) {
+    console.error("No se pudo cargar el historial de asistencia", e);
+    alert("No se pudo cargar el historial de asistencia guardado en este navegador.");
+    historialAsistencia = [];
+  }
+}
+
+function esRegistroAsistenciaValido(registro) {
+  const estadosValidos = ESTADOS_ASISTENCIA
+    .map(estado => estado.valor)
+    .concat(ESTADOS_ASISTENCIA_ANTERIORES.map(estado => estado.valor));
+  return registro
+    && typeof registro.clave === "string"
+    && typeof registro.grupoId === "string"
+    && typeof registro.grupoNombre === "string"
+    && typeof registro.dia === "string"
+    && /^\d{4}-\d{2}-\d{2}$/.test(registro.fecha)
+    && typeof registro.inicio === "string"
+    && typeof registro.fin === "string"
+    && Array.isArray(registro.alumnos)
+    && registro.alumnos.every(alumno => typeof alumno === "string")
+    && Array.isArray(registro.marcas)
+    && registro.marcas.every(marca =>
+      marca
+      && typeof marca.alumno === "string"
+      && estadosValidos.includes(marca.estado)
+    )
+    && (registro.tomada === undefined || typeof registro.tomada === "boolean")
+    && typeof registro.actualizadoEn === "string";
+}
+
+function cargarAsistenciaSesionActual() {
+  const registro = historialAsistencia.find(item => item.clave === claveSesionEquipos);
+  asistenciaActual = new Map(
+    registro
+      ? registro.marcas.map(marca => [marca.alumno, normalizarEstadoAsistencia(marca.estado)])
+      : []
+  );
+  asistenciaTomada = Boolean(registro && registro.tomada !== false);
+  modoAsistenciaActivo = false;
+  actualizarResumenAsistencia();
+  renderizarHistorialAsistencia();
+  mostrarEquipos(equiposActuales);
+}
+
+function normalizarEstadoAsistencia(valor) {
+  if (valor === "retardo") return "presente";
+  return valor;
+}
+
+function obtenerEstadoAsistencia(valor, tomada = false) {
+  const estado = ESTADOS_ASISTENCIA.find(item => item.valor === valor)
+    || ESTADOS_ASISTENCIA_ANTERIORES.find(item => item.valor === valor);
+  if (estado && !valor && tomada) {
+    return { ...estado, etiqueta: "Falta", marca: "×", clase: "falta" };
+  }
+  return estado || ESTADOS_ASISTENCIA[0];
+}
+
+function crearIndicadorAsistencia(valor, tomada, compacto = false) {
+  const estado = obtenerEstadoAsistencia(valor, tomada);
+  const marca = document.createElement("span");
+  marca.className = compacto
+    ? `attendance-status attendance-status-${estado.clase}`
+    : `attendance-marker attendance-marker-${estado.clase}`;
+  marca.innerText = estado.marca;
+  marca.title = estado.etiqueta;
+  marca.setAttribute("aria-label", estado.etiqueta);
+  return marca;
+}
+
+function crearMarcaAsistencia(alumno) {
+  const valor = asistenciaActual.get(alumno) || "";
+  const estado = obtenerEstadoAsistencia(valor, asistenciaTomada);
+  if (!modoAsistenciaActivo) return crearIndicadorAsistencia(valor, asistenciaTomada, true);
+
+  const marca = document.createElement("button");
+  marca.type = "button";
+  marca.className = `attendance-marker attendance-marker-${estado.clase} attendance-control`;
+  marca.innerText = estado.marca;
+  marca.title = `Cambiar ${alumno}: ${estado.etiqueta}. Clic para alternar`;
+  marca.setAttribute("aria-label", `${alumno}: ${estado.etiqueta}. Alternar estado`);
+  marca.setAttribute("aria-pressed", valor === "presente" ? "true" : valor ? "mixed" : "false");
+  marca.addEventListener("click", () => ciclarEstadoAsistencia(alumno));
+
+  return marca;
+}
+
+function actualizarControlesEvaluacion() {
+  const boton = document.getElementById("btn-evaluation-mode");
+  boton.disabled = !claveSesionEquipos;
+  boton.classList.toggle("is-active", modoEvaluacionActivo);
+  boton.setAttribute("aria-pressed", String(modoEvaluacionActivo));
+  boton.title = modoEvaluacionActivo
+    ? "Desactivar evaluación de equipos y notas individuales"
+    : "Activar evaluación de equipos y notas individuales";
+  boton.setAttribute("aria-label", boton.title);
+}
+
+function alternarModoEvaluacion() {
+  if (!claveSesionEquipos) {
+    alert("Selecciona un grupo antes de evaluar.");
+    return;
+  }
+
+  if (!equiposActuales.some(equipo => equipo.length > 0)) {
+    alert("Primero sortea o carga los equipos para evaluar.");
+    return;
+  }
+
+  modoEvaluacionActivo = !modoEvaluacionActivo;
+  if (modoEvaluacionActivo) {
+    const seccion = document.getElementById("teams-section");
+    if (seccion.classList.contains("collapsed")) {
+      seccion.classList.remove("collapsed");
+      document.body.classList.add("teams-expanded");
+      document.getElementById("toggle-arrow").innerText = "▼ Ocultar Equipos";
+    }
+    document.querySelector(".daily-roster").open = false;
+  }
+  actualizarControlesEvaluacion();
+  mostrarEquipos(equiposActuales);
+}
+
+function obtenerResultadoEquipo(numeroEquipo) {
+  return resultadosEquiposActuales.get(numeroEquipo) || "pendiente";
+}
+
+function crearControlResultadoEquipo(numeroEquipo) {
+  const resultado = obtenerResultadoEquipo(numeroEquipo);
+  if (!modoEvaluacionActivo) {
+    const indicador = document.createElement("span");
+    indicador.className = `team-result-indicator team-result-${resultado}`;
+    indicador.innerText = resultado === "terminado" ? "✓" : resultado === "no_terminado" ? "×" : "○";
+    indicador.title = `Equipo ${numeroEquipo}: ${etiquetaResultadoEquipo(resultado)}`;
+    indicador.setAttribute("aria-label", indicador.title);
+    return indicador;
+  }
+
+  const controles = document.createElement("span");
+  controles.className = "team-result-controls";
+  controles.append(
+    crearBotonResultadoEquipo(numeroEquipo, "terminado", "✓", "Marcar equipo como terminado", resultado),
+    crearBotonResultadoEquipo(numeroEquipo, "no_terminado", "×", "Marcar equipo como no terminado", resultado)
+  );
+  return controles;
+}
+
+function crearBotonResultadoEquipo(numeroEquipo, estado, marca, etiqueta, resultadoActual) {
+  const boton = document.createElement("button");
+  boton.type = "button";
+  boton.className = `team-result-button team-result-${estado}`;
+  if (resultadoActual === estado) boton.classList.add("is-selected");
+  boton.innerText = marca;
+  boton.title = `${etiqueta} · clic de nuevo para dejar pendiente`;
+  boton.setAttribute("aria-label", `Equipo ${numeroEquipo}: ${etiqueta}`);
+  boton.setAttribute("aria-pressed", String(resultadoActual === estado));
+  boton.addEventListener("click", () => guardarResultadoEquipo(
+    numeroEquipo,
+    resultadoActual === estado ? "pendiente" : estado
+  ));
+  return boton;
+}
+
+function etiquetaResultadoEquipo(resultado) {
+  if (resultado === "terminado") return "terminado";
+  if (resultado === "no_terminado") return "no terminado";
+  return "pendiente";
+}
+
+function crearControlCalificacion(alumno, numeroEquipo) {
+  const calificacion = obtenerCalificacionAlumno(alumno, numeroEquipo);
+  if (!modoEvaluacionActivo) {
+    const indicador = document.createElement("span");
+    indicador.className = `grade-indicator grade-indicator-${calificacion.tipo}`;
+    indicador.innerText = calificacion.nota === null ? "—" : String(calificacion.nota);
+    indicador.title = calificacion.manual
+      ? `Calificación manual de ${alumno}`
+      : calificacion.nota === null
+        ? "Calificación pendiente del resultado del equipo"
+        : `Calificación automática: ${calificacion.nota}`;
+    indicador.setAttribute("aria-label", indicador.title);
+    return indicador;
+  }
+
+  const controles = document.createElement("span");
+  controles.className = "grade-controls";
+
+  const input = document.createElement("input");
+  input.type = "number";
+  input.className = `grade-input grade-indicator-${calificacion.tipo}`;
+  input.min = "0";
+  input.max = "10";
+  input.step = "1";
+  input.value = calificacion.nota === null ? "" : String(calificacion.nota);
+  input.placeholder = "—";
+  input.title = calificacion.manual
+    ? `Calificación manual de ${alumno}`
+    : "Calificación automática; escribe un entero de 0 a 10 para reemplazarla";
+  input.setAttribute("aria-label", `Calificación de ${alumno}, entero de 0 a 10`);
+  let cambioManual = false;
+  input.addEventListener("input", () => {
+    input.setCustomValidity("");
+    cambioManual = true;
+  });
+  input.addEventListener("change", () => {
+    if (!cambioManual) return;
+    cambioManual = false;
+    guardarCalificacionManual(alumno, input);
+  });
+  input.addEventListener("blur", () => {
+    if (!cambioManual) return;
+    cambioManual = false;
+    guardarCalificacionManual(alumno, input);
+  });
+  controles.appendChild(input);
+
+  if (calificacion.manual) {
+    const reiniciar = document.createElement("button");
+    reiniciar.type = "button";
+    reiniciar.className = "grade-reset-button";
+    reiniciar.innerText = "↺";
+    reiniciar.title = `Restablecer calificación automática de ${alumno}`;
+    reiniciar.setAttribute("aria-label", reiniciar.title);
+    reiniciar.addEventListener("click", () => guardarCalificacionManual(alumno, null));
+    controles.appendChild(reiniciar);
+  }
+  return controles;
+}
+
+function obtenerCalificacionAlumno(alumno, numeroEquipo) {
+  if (calificacionesManualesActuales.has(alumno)) {
+    return { nota: calificacionesManualesActuales.get(alumno), manual: true, tipo: "manual" };
+  }
+
+  const resultado = obtenerResultadoEquipo(numeroEquipo);
+  if (resultado === "terminado") return { nota: 10, manual: false, tipo: "automatica" };
+  if (resultado === "no_terminado") return { nota: 8, manual: false, tipo: "automatica" };
+  return { nota: null, manual: false, tipo: "pendiente" };
+}
+
+function guardarResultadoEquipo(numeroEquipo, resultado) {
+  if (!modoEvaluacionActivo || !claveSesionEquipos) return;
+  if (!ESTADOS_EQUIPO_EVALUACION.includes(resultado)) return;
+
+  const resultadosNuevos = new Map(resultadosEquiposActuales);
+  if (resultado === "pendiente") resultadosNuevos.delete(numeroEquipo);
+  else resultadosNuevos.set(numeroEquipo, resultado);
+  if (!guardarRegistroEvaluacion(resultadosNuevos, calificacionesManualesActuales)) return;
+
+  resultadosEquiposActuales = resultadosNuevos;
+  mostrarEquipos(equiposActuales);
+}
+
+function guardarCalificacionManual(alumno, input) {
+  if (!modoEvaluacionActivo || !claveSesionEquipos) return;
+
+  const calificacionesNuevas = new Map(calificacionesManualesActuales);
+  if (input === null || input.value.trim() === "") {
+    calificacionesNuevas.delete(alumno);
+  } else {
+    const nota = input.valueAsNumber;
+    if (!Number.isInteger(nota) || nota < 0 || nota > 10) {
+      input.setCustomValidity("Ingresa una calificación entera entre 0 y 10.");
+      input.reportValidity();
+      return;
+    }
+    calificacionesNuevas.set(alumno, nota);
+  }
+
+  if (!guardarRegistroEvaluacion(resultadosEquiposActuales, calificacionesNuevas)) return;
+  calificacionesManualesActuales = calificacionesNuevas;
+  mostrarEquipos(equiposActuales);
+}
+
+function crearRegistroEvaluacion(resultados, calificaciones) {
+  const grupo = gruposConfigurados.find(item => item.id === grupoActivoKey);
+  if (!grupo || !claveSesionEquipos) return null;
+
+  const fecha = claveSesionEquipos.slice(claveSesionEquipos.lastIndexOf("|") + 1);
+  return {
+    clave: claveSesionEquipos,
+    grupoId: grupo.id,
+    grupoNombre: grupo.nombre,
+    dia: grupo.dia,
+    fecha,
+    inicio: grupo.inicio,
+    fin: grupo.fin,
+    cantidadEquipos,
+    equipos: Array.from(
+      { length: cantidadEquipos },
+      (_, indice) => [...(equiposActuales[indice] || [])]
+    ),
+    resultadosEquipos: Array.from(
+      { length: cantidadEquipos },
+      (_, indice) => resultados.get(indice + 1) || "pendiente"
+    ),
+    calificaciones: Array.from(calificaciones, ([alumno, nota]) => ({ alumno, nota })),
+    actualizadoEn: new Date().toISOString()
+  };
+}
+
+function guardarRegistroEvaluacion(resultados, calificaciones) {
+  const registro = crearRegistroEvaluacion(resultados, calificaciones);
+  if (!registro) return false;
+
+  const indice = historialEvaluacion.findIndex(item => item.clave === registro.clave);
+  const historialAnterior = historialEvaluacion;
+  historialEvaluacion = [...historialEvaluacion];
+  if (indice === -1) historialEvaluacion.push(registro);
+  else historialEvaluacion[indice] = registro;
+
+  try {
+    localStorage.setItem(CLAVE_REGISTRO_EVALUACION, JSON.stringify(historialEvaluacion));
+    return true;
+  } catch (e) {
+    historialEvaluacion = historialAnterior;
+    console.error("No se pudo guardar la evaluación", e);
+    alert("No se pudo guardar la evaluación. Revisa el espacio disponible del navegador.");
+    return false;
+  }
+}
+
+function cargarHistorialEvaluacion() {
+  try {
+    const guardado = localStorage.getItem(CLAVE_REGISTRO_EVALUACION);
+    const registros = guardado ? JSON.parse(guardado) : [];
+    if (!Array.isArray(registros)) {
+      throw new Error("El historial de evaluación no tiene el formato esperado.");
+    }
+
+    historialEvaluacion = registros.filter(esRegistroEvaluacionValido);
+    if (historialEvaluacion.length !== registros.length) {
+      console.error("Se omitieron registros de evaluación con datos inválidos.");
+    }
+  } catch (e) {
+    console.error("No se pudo cargar el historial de evaluación", e);
+    alert("No se pudo cargar la evaluación guardada en este navegador.");
+    historialEvaluacion = [];
+  }
+}
+
+function esRegistroEvaluacionValido(registro) {
+  return registro
+    && typeof registro.clave === "string"
+    && typeof registro.grupoId === "string"
+    && typeof registro.grupoNombre === "string"
+    && typeof registro.dia === "string"
+    && /^\d{4}-\d{2}-\d{2}$/.test(registro.fecha)
+    && typeof registro.inicio === "string"
+    && typeof registro.fin === "string"
+    && Number.isInteger(registro.cantidadEquipos)
+    && registro.cantidadEquipos > 0
+    && Array.isArray(registro.equipos)
+    && registro.equipos.length === registro.cantidadEquipos
+    && registro.equipos.every(equipo =>
+      Array.isArray(equipo) && equipo.every(alumno => typeof alumno === "string")
+    )
+    && Array.isArray(registro.resultadosEquipos)
+    && registro.resultadosEquipos.length === registro.cantidadEquipos
+    && registro.resultadosEquipos.every(resultado =>
+      ESTADOS_EQUIPO_EVALUACION.includes(resultado)
+    )
+    && Array.isArray(registro.calificaciones)
+    && registro.calificaciones.every(calificacion =>
+      calificacion
+      && typeof calificacion.alumno === "string"
+      && Number.isInteger(calificacion.nota)
+      && calificacion.nota >= 0
+      && calificacion.nota <= 10
+    )
+    && typeof registro.actualizadoEn === "string";
+}
+
+function cargarEvaluacionSesionActual() {
+  const registro = historialEvaluacion.find(item => item.clave === claveSesionEquipos);
+  const cantidadCoincide = registro && registro.cantidadEquipos === cantidadEquipos;
+  const equiposRestaurados = !equiposActuales.some(equipo => equipo.length > 0)
+    && cantidadCoincide
+    && registro.equipos.some(equipo => equipo.length > 0);
+  if (equiposRestaurados) {
+    equiposActuales = registro.equipos.map(equipo => [...equipo]);
+  }
+
+  resultadosEquiposActuales = new Map();
+  if (cantidadCoincide) {
+    registro.resultadosEquipos.forEach((resultado, indice) => {
+      if (resultado !== "pendiente") resultadosEquiposActuales.set(indice + 1, resultado);
+    });
+  }
+  calificacionesManualesActuales = new Map(
+    registro ? registro.calificaciones.map(item => [item.alumno, item.nota]) : []
+  );
+  modoEvaluacionActivo = false;
+  actualizarControlesEvaluacion();
+  mostrarEquipos(equiposActuales);
+  if (equiposRestaurados && !equiposActualesFijados) {
+    actualizarEstadoEquipos("Equipos de esta evaluación restaurados. Fíjalos si quieres conservarlos en el historial de equipos.");
+  }
+}
+
+function reiniciarResultadosEquiposEvaluacion() {
+  if (resultadosEquiposActuales.size === 0) return true;
+  const resultadosPendientes = new Map();
+  if (!guardarRegistroEvaluacion(resultadosPendientes, calificacionesManualesActuales)) return false;
+  resultadosEquiposActuales = resultadosPendientes;
+  return true;
+}
+
+function guardarSnapshotEvaluacionSiExiste() {
+  const registro = historialEvaluacion.find(item => item.clave === claveSesionEquipos);
+  if (!registro) return true;
+  return guardarRegistroEvaluacion(resultadosEquiposActuales, calificacionesManualesActuales);
+}
+
+function contarAsistencia(alumnos, estados, tomada) {
+  const conteo = { presente: 0, falta: 0, retardo: 0, justificada: 0, pendiente: 0 };
+  alumnos.forEach(alumno => {
+    const estado = estados.get(alumno);
+    if (estado === "presente") {
+      conteo.presente++;
+    } else if (estado === "justificada") {
+      conteo.justificada++;
+    } else if (estado === "retardo") {
+      conteo.retardo++;
+    } else if (estado === "falta" || tomada) {
+      conteo.falta++;
+    } else {
+      conteo.pendiente++;
+    }
+  });
+  return conteo;
+}
+
+function formatearResumenAsistencia(conteo) {
+  const resumen = `${conteo.presente} presentes · ${conteo.falta} faltas · ${conteo.justificada} justificadas`;
+  const retardos = conteo.retardo ? ` · ${conteo.retardo} retardos anteriores` : "";
+  const pendientes = conteo.pendiente ? ` · ${conteo.pendiente} pendientes` : "";
+  return `${resumen}${retardos}${pendientes}`;
+}
+
+function actualizarResumenAsistencia() {
+  const resumen = document.getElementById("attendance-summary");
+  const boton = document.getElementById("btn-attendance-mode");
+  boton.disabled = !claveSesionEquipos;
+  boton.classList.toggle("is-active", modoAsistenciaActivo);
+  boton.setAttribute("aria-pressed", String(modoAsistenciaActivo));
+  boton.title = modoAsistenciaActivo ? "Finalizar toma de asistencia" : "Activar toma de asistencia";
+  boton.setAttribute("aria-label", boton.title);
+
+  if (!claveSesionEquipos) {
+    resumen.innerText = "Selecciona un grupo para tomar asistencia.";
+    return;
+  }
+
+  const alumnos = parsearListaAlumnos(document.getElementById("input-students").value);
+  const estadoLista = modoAsistenciaActivo
+    ? "Tomando lista"
+    : asistenciaTomada ? "Lista cerrada" : "Lista pendiente";
+  resumen.innerText = `${estadoLista} · ${formatearResumenAsistencia(contarAsistencia(alumnos, asistenciaActual, asistenciaTomada))}`;
+}
+
+function ciclarEstadoAsistencia(alumno) {
+  if (!modoAsistenciaActivo) return;
+  const estadoActual = asistenciaActual.get(alumno) || "";
+  const estados = ESTADOS_ASISTENCIA.map(estado => estado.valor);
+  const indiceActual = estados.indexOf(estadoActual);
+  const siguienteEstado = estados[(indiceActual + 1) % estados.length];
+  guardarEstadoAsistencia(alumno, siguienteEstado);
+}
+
+function crearRegistroAsistencia(estados, tomada) {
+  const grupo = gruposConfigurados.find(item => item.id === grupoActivoKey);
+  if (!grupo || !claveSesionEquipos) return null;
+
+  const fecha = claveSesionEquipos.slice(claveSesionEquipos.lastIndexOf("|") + 1);
+  return {
+    clave: claveSesionEquipos,
+    grupoId: grupo.id,
+    grupoNombre: grupo.nombre,
+    dia: grupo.dia,
+    fecha,
+    inicio: grupo.inicio,
+    fin: grupo.fin,
+    alumnos: parsearListaAlumnos(document.getElementById("input-students").value),
+    marcas: Array.from(estados, ([nombre, estado]) => ({ alumno: nombre, estado })),
+    tomada,
+    actualizadoEn: new Date().toISOString()
+  };
+}
+
+function finalizarAsistenciaActual() {
+  const registro = crearRegistroAsistencia(asistenciaActual, true);
+  if (!registro || !guardarRegistroAsistencia(registro)) return false;
+
+  asistenciaTomada = true;
+  modoAsistenciaActivo = false;
+  actualizarResumenAsistencia();
+  mostrarEquipos(equiposActuales);
+  renderizarHistorialAsistencia();
+  return true;
+}
+
+function guardarEstadoAsistencia(alumno, valor) {
+  if (!modoAsistenciaActivo || !claveSesionEquipos) return;
+  if (!ESTADOS_ASISTENCIA.some(estado => estado.valor === valor)) return;
+
+  const nuevosEstados = new Map(asistenciaActual);
+  if (valor) nuevosEstados.set(alumno, valor);
+  else nuevosEstados.delete(alumno);
+
+  const registro = crearRegistroAsistencia(nuevosEstados, asistenciaTomada);
+  if (!registro || !guardarRegistroAsistencia(registro)) return;
+
+  asistenciaActual = nuevosEstados;
+  actualizarMarcaAsistenciaEnEquipos(alumno);
+  actualizarResumenAsistencia();
+  renderizarHistorialAsistencia();
+}
+
+function actualizarMarcaAsistenciaEnEquipos(alumno) {
+  document.querySelectorAll(".team-members-list li").forEach(fila => {
+    if (!fila.firstChild || fila.firstChild.textContent !== alumno) return;
+    const marcaActual = fila.querySelector(".attendance-marker");
+    const marcaNueva = crearMarcaAsistencia(alumno);
+
+    if (marcaActual && marcaActual.tagName === marcaNueva.tagName) {
+      marcaActual.className = marcaNueva.className;
+      marcaActual.innerText = marcaNueva.innerText;
+      marcaActual.title = marcaNueva.title;
+      marcaActual.setAttribute("aria-label", marcaNueva.getAttribute("aria-label"));
+      if (modoAsistenciaActivo) {
+        marcaActual.setAttribute("aria-pressed", marcaNueva.getAttribute("aria-pressed"));
+      }
+    } else if (marcaActual) {
+      marcaActual.replaceWith(marcaNueva);
+    }
+  });
+}
+
+function guardarRegistroAsistencia(registro) {
+  const indice = historialAsistencia.findIndex(item => item.clave === registro.clave);
+  const historialAnterior = historialAsistencia;
+  historialAsistencia = [...historialAsistencia];
+  if (indice === -1) {
+    historialAsistencia.push(registro);
+  } else {
+    historialAsistencia[indice] = registro;
+  }
+
+  try {
+    localStorage.setItem(CLAVE_REGISTRO_ASISTENCIA, JSON.stringify(historialAsistencia));
+    return true;
+  } catch (e) {
+    historialAsistencia = historialAnterior;
+    console.error("No se pudo guardar la asistencia", e);
+    alert("No se pudo guardar la asistencia. Revisa el espacio disponible del navegador.");
+    return false;
+  }
+}
+
+function renderizarHistorialAsistencia() {
+  const lista = document.getElementById("attendance-history-list");
+  lista.innerHTML = "";
+
+  const registros = [...historialAsistencia].sort((a, b) => {
+    const porFecha = b.fecha.localeCompare(a.fecha);
+    return porFecha || b.actualizadoEn.localeCompare(a.actualizadoEn);
+  });
+
+  if (registros.length === 0) {
+    const vacio = document.createElement("p");
+    vacio.className = "attendance-history-empty";
+    vacio.innerText = "Todavía no hay asistencias guardadas.";
+    lista.appendChild(vacio);
+    return;
+  }
+
+  registros.forEach(registro => {
+    const detalle = document.createElement("details");
+    detalle.className = "attendance-history-record";
+
+    const fecha = new Date(`${registro.fecha}T00:00:00`);
+    const fechaTexto = fecha.toLocaleDateString("es-MX", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric"
+    });
+    const resumen = document.createElement("summary");
+    resumen.innerText = `${registro.grupoNombre} · ${NOMBRES_DIAS[registro.dia] || registro.dia} ${fechaTexto}`;
+
+    const estados = new Map(registro.marcas.map(marca => [marca.alumno, marca.estado]));
+    const metadatos = document.createElement("p");
+    metadatos.className = "attendance-history-meta";
+    const tomada = registro.tomada !== false;
+    metadatos.innerText = `${registro.inicio}–${registro.fin} · ${formatearResumenAsistencia(contarAsistencia(registro.alumnos, estados, tomada))}`;
+
+    const tabla = document.createElement("table");
+    tabla.className = "attendance-history-table";
+    const cuerpo = tabla.createTBody();
+    registro.alumnos.forEach(alumno => {
+      const fila = cuerpo.insertRow();
+      const nombre = fila.insertCell();
+      nombre.innerText = alumno;
+      const estado = estados.get(alumno) || "";
+      const estadoInfo = obtenerEstadoAsistencia(estado, tomada);
+      fila.insertCell().append(
+        crearIndicadorAsistencia(estado, tomada),
+        document.createTextNode(` ${estadoInfo.etiqueta}`)
+      );
+    });
+
+    detalle.append(resumen, metadatos, tabla);
     lista.appendChild(detalle);
   });
 }
@@ -614,6 +1381,18 @@ function guardarAlumnosDelGrupoActivo() {
   if (!grupo) return;
   grupo.alumnos = parsearListaAlumnos(document.getElementById("input-students").value);
   guardarEnLocalStorage();
+
+  const registro = historialAsistencia.find(item => item.clave === claveSesionEquipos);
+  if (registro) {
+    guardarRegistroAsistencia({
+      ...registro,
+      alumnos: [...grupo.alumnos],
+      marcas: Array.from(asistenciaActual, ([nombre, estado]) => ({ alumno: nombre, estado })),
+      actualizadoEn: new Date().toISOString()
+    });
+  }
+
+  renderizarHistorialAsistencia();
 }
 
 function generarEquiposAleatorios() {
@@ -635,6 +1414,7 @@ function generarEquiposAleatorios() {
     [alumnos[i], alumnos[j]] = [alumnos[j], alumnos[i]];
   }
 
+  if (!reiniciarResultadosEquiposEvaluacion()) return;
   const equipos = Array.from({ length: cantidadEquipos }, () => []);
   alumnos.forEach((alumno, index) => equipos[index % cantidadEquipos].push(alumno));
   equiposActuales = equipos;
@@ -644,7 +1424,10 @@ function generarEquiposAleatorios() {
 
   const section = document.getElementById("teams-section");
   section.classList.remove("collapsed");
+  document.body.classList.add("teams-expanded");
+  document.querySelector(".daily-roster").open = false;
   document.getElementById("toggle-arrow").innerText = "▼ Ocultar Equipos";
+  guardarSnapshotEvaluacionSiExiste();
 }
 
 function alternarMedios() {

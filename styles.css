@@ -524,6 +524,12 @@ select {
   flex-shrink: 0;
 }
 
+.btn-icon-only.is-active {
+  border-color: var(--accent-cyan);
+  background: var(--accent-cyan);
+  color: #000;
+}
+
 .btn-icon-only:disabled {
   cursor: not-allowed;
   opacity: 0.45;
@@ -542,13 +548,39 @@ select {
 }
 
 .teams-section:not(.collapsed) {
-  flex: 1.2;
+  flex: 0 0 auto;
+  min-height: 0;
+  margin-bottom: 16px;
+  padding: 10px 12px;
 }
 
 .teams-section:not(.collapsed) .card-header {
-  margin-bottom: 8px;
+  margin-bottom: 4px;
   border-bottom: 1px solid var(--card-border);
-  padding-bottom: 6px;
+  padding-bottom: 4px;
+}
+
+.teams-section:not(.collapsed) .daily-roster {
+  gap: 2px;
+  margin-bottom: 4px;
+}
+
+.teams-section:not(.collapsed) .daily-roster summary {
+  font-size: 0.72rem;
+  line-height: 1.1;
+}
+
+.teams-section:not(.collapsed) .daily-roster textarea {
+  min-height: 36px;
+  max-height: 44px;
+  padding: 4px 6px;
+}
+
+.teams-section:not(.collapsed) .teams-assignment-status,
+.teams-section:not(.collapsed) .attendance-summary {
+  margin-bottom: 3px;
+  font-size: 0.68rem;
+  line-height: 1.05;
 }
 
 .teams-section.collapsed .teams-grid {
@@ -563,6 +595,10 @@ select {
   display: none;
 }
 
+.teams-section.collapsed .attendance-summary {
+  display: none;
+}
+
 .daily-roster {
   display: flex;
   flex-direction: column;
@@ -570,9 +606,10 @@ select {
   margin-bottom: 8px;
 }
 
-.daily-roster label {
+.daily-roster summary {
   color: var(--text-muted);
   font-size: 0.78rem;
+  cursor: pointer;
 }
 
 .daily-roster textarea {
@@ -591,10 +628,10 @@ select {
 .teams-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
-  gap: 8px;
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
+  gap: 6px;
+  flex: 0 0 auto;
+  align-content: start;
+  overflow: visible;
 }
 
 body.theme-christmas .christmas-decorations {
@@ -709,22 +746,84 @@ body.theme-christmas .christmas-lights {
 .team-card {
   background: var(--bg-dark);
   border: 1px solid var(--card-border);
-  padding: 8px;
+  min-width: 0;
+  padding: 5px;
   border-radius: 6px;
   display: flex;
   flex-direction: column;
-  overflow-y: auto;
+  overflow: visible;
 }
 
 .team-title {
-  font-size: 0.8rem;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
   font-weight: 700;
   color: var(--accent-blue);
-  margin-bottom: 6px;
+  margin-bottom: 4px;
   border-bottom: 1px solid var(--card-border);
-  padding-bottom: 4px;
+  padding-bottom: 3px;
   text-align: center;
   flex-shrink: 0;
+}
+
+.team-result-indicator,
+.team-result-button {
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--card-border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.68rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.team-result-indicator,
+.team-result-controls {
+  position: absolute;
+  right: 0;
+}
+
+.team-result-controls {
+  display: flex;
+  gap: 2px;
+}
+
+.team-result-button {
+  padding: 0;
+  cursor: pointer;
+}
+
+.team-result-button:hover {
+  transform: scale(1.08);
+}
+
+.team-result-button:focus-visible,
+.grade-input:focus-visible,
+.grade-reset-button:focus-visible {
+  outline: 2px solid var(--accent-blue);
+  outline-offset: 2px;
+}
+
+.team-result-terminado,
+.team-result-button.is-selected.team-result-terminado {
+  border-color: var(--status-green);
+  background: rgba(34, 197, 94, 0.18);
+  color: var(--status-green);
+}
+
+.team-result-no_terminado,
+.team-result-button.is-selected.team-result-no_terminado {
+  border-color: var(--alert-red);
+  background: rgba(239, 68, 68, 0.16);
+  color: var(--alert-red);
 }
 
 .team-members-list {
@@ -733,17 +832,303 @@ body.theme-christmas .christmas-lights {
   margin: 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 1px;
 }
 
 .team-members-list li {
-  font-size: 0.78rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  min-width: 0;
+  font-size: 0.66rem;
   color: var(--text-main);
-  line-height: 1.25;
+  line-height: 1.05;
   background: rgba(255, 255, 255, 0.03);
-  padding: 3px 6px;
+  padding: 2px 4px;
   border-radius: 4px;
   border-left: 2px solid var(--accent-cyan);
+}
+
+.team-member-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.attendance-marker {
+  display: inline-flex;
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  margin-left: auto;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--card-border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.68rem;
+  font-weight: 800;
+  line-height: 1;
+  vertical-align: middle;
+}
+
+.attendance-status {
+  display: inline-flex;
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  margin-left: auto;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.attendance-status-sin-marcar {
+  display: none;
+}
+
+.attendance-status-presente {
+  color: var(--status-green);
+}
+
+.attendance-status-falta {
+  color: var(--alert-red);
+}
+
+.attendance-status-justificada {
+  color: var(--accent-blue);
+}
+
+.grade-indicator,
+.grade-input {
+  display: inline-flex;
+  width: 24px;
+  height: 18px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 2px;
+  border: 1px solid var(--card-border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.62rem;
+  font-weight: 700;
+  line-height: 1;
+  text-align: center;
+}
+
+.grade-indicator-automatica {
+  border-color: var(--accent-blue);
+  color: var(--accent-blue);
+}
+
+.grade-indicator-manual {
+  border-color: var(--accent-cyan);
+  background: rgba(6, 182, 212, 0.14);
+  color: var(--accent-cyan);
+}
+
+.grade-indicator-pendiente {
+  border-style: dashed;
+  color: var(--text-muted);
+}
+
+.grade-controls {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 2px;
+  margin-left: 3px;
+}
+
+.grade-input {
+  width: 30px;
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+.grade-input::-webkit-inner-spin-button,
+.grade-input::-webkit-outer-spin-button {
+  margin: 0;
+  -webkit-appearance: none;
+}
+
+.grade-reset-button {
+  width: 16px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid var(--card-border);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.grade-reset-button:hover {
+  border-color: var(--accent-cyan);
+  color: var(--accent-cyan);
+}
+
+body.teams-expanded .dashboard-container {
+  overflow-y: auto;
+}
+
+body.teams-expanded .top-content-grid {
+  flex: 1 1 0;
+  min-height: 120px;
+}
+
+body.teams-expanded .top-content-grid .card {
+  padding: 8px;
+}
+
+body.teams-expanded .top-content-grid .card-header {
+  margin-bottom: 2px;
+  padding-bottom: 2px;
+}
+
+body.teams-expanded .clock-display {
+  font-size: clamp(1.9rem, 6vh, 3rem);
+}
+
+body.teams-expanded .timer-box {
+  margin: 1px 0;
+  padding: 4px 6px;
+}
+
+body.teams-expanded .timer-item .label {
+  font-size: 0.65rem;
+}
+
+body.teams-expanded .timer-item .value {
+  font-size: clamp(1rem, 3.2vh, 1.35rem);
+}
+
+body.teams-expanded .progress-bar-container,
+body.teams-expanded .time-remaining {
+  display: none;
+}
+
+body.teams-expanded .media-container {
+  min-height: 0;
+}
+
+body.teams-expanded .session-title {
+  margin-bottom: 3px;
+  font-size: 0.95rem;
+}
+
+.attendance-control {
+  padding: 0;
+  cursor: pointer;
+}
+
+.attendance-control:hover {
+  transform: scale(1.08);
+}
+
+.attendance-control:focus-visible {
+  outline: 2px solid var(--accent-blue);
+  outline-offset: 2px;
+}
+
+.attendance-marker-presente {
+  border-color: var(--status-green);
+  background: rgba(34, 197, 94, 0.2);
+  color: var(--status-green);
+}
+
+.attendance-marker-falta {
+  border-color: rgba(239, 68, 68, 0.7);
+  background: rgba(239, 68, 68, 0.2);
+  color: var(--alert-red);
+}
+
+.attendance-marker-retardo {
+  border-color: var(--alert-orange);
+  background: rgba(249, 115, 22, 0.2);
+  color: var(--alert-orange);
+}
+
+.attendance-marker-justificada {
+  border-color: var(--accent-blue);
+  background: rgba(56, 189, 248, 0.2);
+  color: var(--accent-blue);
+}
+
+.attendance-summary {
+  min-height: 1.1em;
+  margin-bottom: 6px;
+  color: var(--text-muted);
+  font-size: 0.7rem;
+}
+
+.attendance-history-list {
+  display: flex;
+  max-height: 58vh;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+  padding: 2px;
+}
+
+.attendance-history-empty {
+  padding: 8px;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.attendance-history-record {
+  padding: 9px;
+  border: 1px solid var(--card-border);
+  border-radius: 7px;
+  background: var(--bg-dark);
+}
+
+.attendance-history-record summary {
+  color: var(--accent-cyan);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.attendance-history-meta {
+  margin: 7px 0;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+.attendance-history-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+}
+
+.attendance-history-table td {
+  padding: 5px 7px;
+  border-bottom: 1px solid var(--card-border);
+  text-align: left;
+}
+
+.attendance-history-table td:first-child {
+  color: var(--text-main);
+}
+
+.attendance-history-table .attendance-marker {
+  margin-left: 0;
+}
+
+.attendance-history-content {
+  max-width: 760px;
+}
+
+.attendance-history-content > p {
+  color: var(--text-muted);
+  font-size: 0.8rem;
 }
 
 /* MODAL DE CONFIGURACIÓN */
@@ -1068,9 +1453,34 @@ body.theme-christmas .christmas-lights {
   font-size: 0.75rem;
 }
 
-.team-history-teams p {
+.team-history-members {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
   margin-top: 3px;
+}
+
+.team-history-member {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
   color: var(--text-main);
+  font-size: 0.72rem;
+}
+
+.team-history-member-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.team-history-member.is-absent .team-history-member-name {
+  color: var(--alert-red);
+  font-weight: 600;
+}
+
+.team-history-members > p {
+  color: var(--text-muted);
   font-size: 0.72rem;
 }
 

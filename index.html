@@ -134,14 +134,18 @@
           <button class="btn-icon-only" id="btn-fix-teams" onclick="fijarEquiposActuales()" title="Fijar equipos" aria-label="Fijar equipos" disabled>📌</button>
           <button class="btn-icon-only" id="btn-reset-teams" onclick="reiniciarEquiposSesion()" title="Reiniciar equipos de esta sesión" aria-label="Reiniciar equipos de esta sesión" disabled>↻</button>
           <button class="btn-icon-only" onclick="abrirHistorialEquipos()" title="Historial de equipos" aria-label="Historial de equipos">📚</button>
+          <button class="btn-icon-only" id="btn-attendance-mode" onclick="alternarModoAsistencia()" title="Activar toma de asistencia" aria-label="Activar toma de asistencia" aria-pressed="false">📝</button>
+          <button class="btn-icon-only" id="btn-evaluation-mode" onclick="alternarModoEvaluacion()" title="Activar evaluación" aria-label="Activar evaluación" aria-pressed="false" disabled>🏅</button>
+          <button class="btn-icon-only" onclick="abrirHistorialAsistencia()" title="Historial de asistencia" aria-label="Historial de asistencia">📅</button>
         </div>
       </div>
 
-      <div class="daily-roster">
-        <label for="input-students">Alumnos del grupo (puedes ajustar la lista para esta clase):</label>
-        <textarea id="input-students" rows="2" placeholder="Selecciona un grupo para cargar sus alumnos"></textarea>
-      </div>
+      <details class="daily-roster" open>
+        <summary>Alumnos del grupo (clic para editar)</summary>
+        <textarea id="input-students" rows="2" aria-label="Alumnos del grupo" placeholder="Selecciona un grupo para cargar sus alumnos"></textarea>
+      </details>
       <p class="teams-assignment-status" id="teams-assignment-status" role="status">Selecciona un grupo para sortear o fijar equipos.</p>
+      <p class="attendance-summary" id="attendance-summary" role="status">Selecciona un grupo para tomar asistencia.</p>
       <div class="teams-grid" id="teams-grid-content"></div>
     </section>
 
@@ -254,6 +258,17 @@
       <div class="team-history-list" id="team-history-list"></div>
       <div class="modal-actions">
         <button class="btn-close" onclick="cerrarHistorialEquipos()">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay hidden" id="attendance-history-modal" role="dialog" aria-modal="true" aria-labelledby="attendance-history-title">
+    <div class="modal-content attendance-history-content">
+      <h2 id="attendance-history-title">Historial de asistencia</h2>
+      <p>Consulta la lista por grupo, fecha y horario.</p>
+      <div class="team-history-list attendance-history-list" id="attendance-history-list"></div>
+      <div class="modal-actions">
+        <button class="btn-close" onclick="cerrarHistorialAsistencia()">Cerrar</button>
       </div>
     </div>
   </div>
