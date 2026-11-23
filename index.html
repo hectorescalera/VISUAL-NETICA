@@ -131,6 +131,9 @@
         </div>
         <div class="teams-header-right" onclick="event.stopPropagation()">
           <button class="btn-icon-only" onclick="generarEquiposAleatorios()" title="Sortear Equipos">🎲</button>
+          <button class="btn-icon-only" id="btn-fix-teams" onclick="fijarEquiposActuales()" title="Fijar equipos" aria-label="Fijar equipos" disabled>📌</button>
+          <button class="btn-icon-only" id="btn-reset-teams" onclick="reiniciarEquiposSesion()" title="Reiniciar equipos de esta sesión" aria-label="Reiniciar equipos de esta sesión" disabled>↻</button>
+          <button class="btn-icon-only" onclick="abrirHistorialEquipos()" title="Historial de equipos" aria-label="Historial de equipos">📚</button>
         </div>
       </div>
 
@@ -138,6 +141,7 @@
         <label for="input-students">Alumnos del grupo (puedes ajustar la lista para esta clase):</label>
         <textarea id="input-students" rows="2" placeholder="Selecciona un grupo para cargar sus alumnos"></textarea>
       </div>
+      <p class="teams-assignment-status" id="teams-assignment-status" role="status">Selecciona un grupo para sortear o fijar equipos.</p>
       <div class="teams-grid" id="teams-grid-content"></div>
     </section>
 
@@ -239,6 +243,17 @@
       <div class="modal-actions">
         <button class="btn-save" onclick="guardarConfiguracion()">Guardar y Aplicar</button>
         <button class="btn-close" onclick="cerrarModalConfig()">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay hidden" id="team-history-modal" role="dialog" aria-modal="true" aria-labelledby="team-history-title">
+    <div class="modal-content team-history-content">
+      <h2 id="team-history-title">Historial de equipos fijados</h2>
+      <p>Consulta las combinaciones guardadas por grupo, día y fecha.</p>
+      <div class="team-history-list" id="team-history-list"></div>
+      <div class="modal-actions">
+        <button class="btn-close" onclick="cerrarHistorialEquipos()">Cerrar</button>
       </div>
     </div>
   </div>

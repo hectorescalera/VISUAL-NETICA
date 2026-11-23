@@ -517,6 +517,30 @@ select {
   font-weight: 600;
 }
 
+.teams-header-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.btn-icon-only:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.teams-assignment-status {
+  min-height: 1.1em;
+  margin-bottom: 6px;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+.teams-assignment-status.is-pinned {
+  color: var(--status-green);
+  font-weight: 700;
+}
+
 .teams-section:not(.collapsed) {
   flex: 1.2;
 }
@@ -532,6 +556,10 @@ select {
 }
 
 .teams-section.collapsed .daily-roster {
+  display: none;
+}
+
+.teams-section.collapsed .teams-assignment-status {
   display: none;
 }
 
@@ -984,10 +1012,87 @@ body.theme-christmas .christmas-lights {
   border-radius: 6px;
 }
 
+.team-history-content {
+  max-width: 760px;
+}
+
+.team-history-content > p {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.team-history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.team-history-empty {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.team-history-record {
+  padding: 9px;
+  border: 1px solid var(--card-border);
+  border-radius: 7px;
+  background: var(--bg-dark);
+}
+
+.team-history-record summary {
+  color: var(--accent-cyan);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.team-history-meta {
+  margin: 7px 0;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+.team-history-teams {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 6px;
+}
+
+.team-history-teams section {
+  padding: 7px;
+  border: 1px solid var(--card-border);
+  border-radius: 5px;
+}
+
+.team-history-teams strong {
+  color: var(--accent-blue);
+  font-size: 0.75rem;
+}
+
+.team-history-teams p {
+  margin-top: 3px;
+  color: var(--text-main);
+  font-size: 0.72rem;
+}
+
 @media (max-width: 600px) {
   .groups-config-heading {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .teams-header-clickable,
+  .teams-header-left {
+    flex-wrap: wrap;
+  }
+
+  .teams-header-right {
+    gap: 3px;
+  }
+
+  .teams-header-right .btn-icon-only {
+    width: 30px;
+    height: 30px;
+    font-size: 0.95rem;
   }
 
   .group-config-fields {

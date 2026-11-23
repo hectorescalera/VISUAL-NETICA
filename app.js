@@ -63,13 +63,17 @@ let imagenLocalBase64 = null;
 let cantidadEquipos = 7;
 let minutosAntesDesarme = 8;
 
-// EQUIPOS GUARDADOS POR GRUPO Y TEMPORIZADOR DE GUARDADO DE ALUMNOS
-let equiposPorGrupo = {};
+// REGISTRO DE EQUIPOS POR SESIÓN Y TEMPORIZADOR DE GUARDADO DE ALUMNOS
+const CLAVE_REGISTRO_EQUIPOS = "robotica_historial_equipos";
+let historialEquipos = [];
+let equiposActuales = [];
+let equiposActualesFijados = false;
+let claveSesionEquipos = null;
 let temporizadorGuardadoAlumnos = null;
 
 // INICIALIZACIÓN Y CARGA DE LOCALSTORAGE
 document.addEventListener("DOMContentLoaded", () => {
-  cargarEquiposGuardados();
+  cargarHistorialEquipos();
   cargarConfiguracionGuardada();
   revisarHorarioAutomatico();
 
@@ -119,19 +123,23 @@ function revisarHorarioAutomatico(ahora = new Date()) {
 
   if (grupoEnHorario) {
     document.getElementById("group-select").value = grupoEnHorario.id;
-    cambiarGrupo(true);
+    cambiarGrupo();
   }
 }
 
-function cambiarGrupo(cambioAutomatico = false) {
+function cambiarGrupo() {
   const select = document.getElementById("group-select");
   grupoActivoKey = select.value;
   const grupoActivo = gruposConfigurados.find(grupo => grupo.id === grupoActivoKey);
 
   if (!grupoActivo) {
+    claveSesionEquipos = null;
+    equiposActuales = [];
+    equiposActualesFijados = false;
     limpiarRelojClase();
     document.getElementById("input-students").value = "";
     mostrarEquipos([]);
+    actualizarEstadoEquipos("Selecciona un grupo para sortear o fijar equipos.");
     return;
   }
 
@@ -151,19 +159,8 @@ function cambiarGrupo(cambioAutomatico = false) {
 
   document.getElementById("input-students").value = grupoActivo.alumnos.join("\n");
 
-  if (cambioAutomatico) {
-    delete equiposPorGrupo[grupoActivoKey];
-    try {
-      localStorage.setItem("robotica_equipos", JSON.stringify(equiposPorGrupo));
-    } catch (e) {
-      console.error("No se pudieron reiniciar los equipos del grupo", e);
-    }
-    mostrarEquipos([]);
-  } else {
-    // Muestra los equipos guardados de este grupo (o vacíos si aún no se sortean)
-    const guardados = equiposPorGrupo[grupoActivoKey];
-    mostrarEquipos(guardados && guardados.length === cantidadEquipos ? guardados : []);
-  }
+  claveSesionEquipos = crearClaveSesionEquipos(grupoActivo, horaInicioClase);
+  cargarEquiposSesionActual();
 
   actualizarHoraDesarme();
 
@@ -368,23 +365,105 @@ function actualizarEquipos(cantidad, conservarAlumnos = true) {
   });
 }
 
-// EQUIPOS GUARDADOS POR GRUPO
-function cargarEquiposGuardados() {
+// REGISTRO DE EQUIPOS FIJADOS POR GRUPO Y FECHA
+function cargarHistorialEquipos() {
   try {
-    equiposPorGrupo = JSON.parse(localStorage.getItem("robotica_equipos")) || {};
+    const guardado = localStorage.getItem(CLAVE_REGISTRO_EQUIPOS);
+    const registros = guardado ? JSON.parse(guardado) : [];
+    if (!Array.isArray(registros)) {
+      throw new Error("El registro guardado no tiene el formato esperado.");
+    }
+
+    historialEquipos = registros.filter(esRegistroEquipoValido);
+    if (historialEquipos.length !== registros.length) {
+      console.error("Se omitieron registros de equipos con datos inválidos.");
+    }
   } catch (e) {
-    equiposPorGrupo = {};
+    console.error("No se pudo cargar el historial de equipos", e);
+    alert("No se pudo cargar el historial de equipos guardado en este navegador.");
+    historialEquipos = [];
   }
 }
 
-function guardarEquiposGrupo(equipos) {
-  if (!grupoActivoKey) return;
-  equiposPorGrupo[grupoActivoKey] = equipos;
-  try {
-    localStorage.setItem("robotica_equipos", JSON.stringify(equiposPorGrupo));
-  } catch (e) {
-    console.error("No se pudieron guardar los equipos", e);
+function esRegistroEquipoValido(registro) {
+  return registro
+    && typeof registro.clave === "string"
+    && typeof registro.grupoId === "string"
+    && typeof registro.grupoNombre === "string"
+    && typeof registro.dia === "string"
+    && /^\d{4}-\d{2}-\d{2}$/.test(registro.fecha)
+    && typeof registro.inicio === "string"
+    && typeof registro.fin === "string"
+    && Number.isInteger(registro.cantidadEquipos)
+    && registro.cantidadEquipos > 0
+    && Array.isArray(registro.equipos)
+    && registro.equipos.length === registro.cantidadEquipos
+    && registro.equipos.every(equipo =>
+      Array.isArray(equipo) && equipo.every(alumno => typeof alumno === "string")
+    )
+    && typeof registro.fijado === "boolean"
+    && typeof registro.actualizadoEn === "string";
+}
+
+function crearClaveSesionEquipos(grupo, fecha) {
+  const fechaLocal = [
+    fecha.getFullYear(),
+    String(fecha.getMonth() + 1).padStart(2, "0"),
+    String(fecha.getDate()).padStart(2, "0")
+  ].join("-");
+  return `${grupo.id}|${fechaLocal}`;
+}
+
+function cargarEquiposSesionActual() {
+  const registro = historialEquipos.find(item => item.clave === claveSesionEquipos);
+  const cantidadCoincide = registro && registro.cantidadEquipos === cantidadEquipos;
+  equiposActualesFijados = Boolean(registro && registro.fijado && cantidadCoincide);
+  equiposActuales = equiposActualesFijados ? registro.equipos : [];
+  mostrarEquipos(equiposActuales);
+
+  if (registro && registro.fijado && !cantidadCoincide) {
+    actualizarEstadoEquipos(
+      `Esta sesión tiene un registro con ${registro.cantidadEquipos} equipos. Sortéalos de nuevo para usar los ${cantidadEquipos} actuales.`
+    );
+  } else if (equiposActualesFijados) {
+    actualizarEstadoEquipos("Equipos fijados para esta sesión.");
+  } else {
+    actualizarEstadoEquipos("Sin equipos fijados para esta sesión. Puedes sortear y fijar una combinación.");
   }
+}
+
+function guardarRegistroEquipos(registro) {
+  const indice = historialEquipos.findIndex(item => item.clave === registro.clave);
+  const historialAnterior = historialEquipos;
+  historialEquipos = [...historialEquipos];
+  if (indice === -1) {
+    historialEquipos.push(registro);
+  } else {
+    historialEquipos[indice] = registro;
+  }
+
+  try {
+    localStorage.setItem(CLAVE_REGISTRO_EQUIPOS, JSON.stringify(historialEquipos));
+    return true;
+  } catch (e) {
+    historialEquipos = historialAnterior;
+    console.error("No se pudo guardar el registro de equipos", e);
+    alert("No se pudieron guardar los equipos. Revisa el espacio disponible del navegador.");
+    return false;
+  }
+}
+
+function actualizarEstadoEquipos(mensaje) {
+  const estado = document.getElementById("teams-assignment-status");
+  estado.innerText = mensaje;
+  estado.classList.toggle("is-pinned", equiposActualesFijados);
+  document.getElementById("btn-fix-teams").disabled =
+    !claveSesionEquipos || equiposActualesFijados || !equiposActuales.some(equipo => equipo.length > 0);
+  const registroSesion = historialEquipos.find(item => item.clave === claveSesionEquipos);
+  document.getElementById("btn-reset-teams").disabled =
+    !claveSesionEquipos
+    || (!equiposActualesFijados && !equiposActuales.some(equipo => equipo.length > 0)
+      && !(registroSesion && registroSesion.fijado));
 }
 
 function mostrarEquipos(equipos) {
@@ -416,6 +495,119 @@ function mostrarEquipos(equipos) {
   }
 }
 
+function fijarEquiposActuales() {
+  const grupo = gruposConfigurados.find(item => item.id === grupoActivoKey);
+  if (!grupo || !claveSesionEquipos || !horaInicioClase) {
+    alert("Selecciona un grupo antes de fijar los equipos.");
+    return;
+  }
+
+  if (!equiposActuales.some(equipo => equipo.length > 0)) {
+    alert("Primero sortea los equipos que quieres fijar.");
+    return;
+  }
+
+  const fecha = claveSesionEquipos.slice(claveSesionEquipos.lastIndexOf("|") + 1);
+  const registro = {
+    clave: claveSesionEquipos,
+    grupoId: grupo.id,
+    grupoNombre: grupo.nombre,
+    dia: grupo.dia,
+    fecha,
+    inicio: grupo.inicio,
+    fin: grupo.fin,
+    cantidadEquipos: cantidadEquipos,
+    equipos: equiposActuales.map(equipo => [...equipo]),
+    fijado: true,
+    actualizadoEn: new Date().toISOString()
+  };
+
+  if (!guardarRegistroEquipos(registro)) return;
+  equiposActualesFijados = true;
+  actualizarEstadoEquipos("Equipos fijados para esta sesión y guardados en el historial.");
+  renderizarHistorialEquipos();
+}
+
+function reiniciarEquiposSesion() {
+  if (!claveSesionEquipos) return;
+
+  const registro = historialEquipos.find(item => item.clave === claveSesionEquipos);
+  if (registro && registro.fijado) {
+    const registroReiniciado = { ...registro, fijado: false };
+    if (!guardarRegistroEquipos(registroReiniciado)) return;
+  }
+
+  equiposActuales = [];
+  equiposActualesFijados = false;
+  mostrarEquipos([]);
+  actualizarEstadoEquipos(
+    registro
+      ? "Equipos reiniciados para esta sesión. El registro anterior sigue en el historial."
+      : "Sorteo reiniciado. Puedes generar y fijar una combinación nueva."
+  );
+  renderizarHistorialEquipos();
+}
+
+function abrirHistorialEquipos() {
+  renderizarHistorialEquipos();
+  document.getElementById("team-history-modal").classList.remove("hidden");
+}
+
+function cerrarHistorialEquipos() {
+  document.getElementById("team-history-modal").classList.add("hidden");
+}
+
+function renderizarHistorialEquipos() {
+  const lista = document.getElementById("team-history-list");
+  lista.innerHTML = "";
+
+  const registros = [...historialEquipos].sort((a, b) => {
+    const porFecha = b.fecha.localeCompare(a.fecha);
+    return porFecha || b.actualizadoEn.localeCompare(a.actualizadoEn);
+  });
+
+  if (registros.length === 0) {
+    const vacio = document.createElement("p");
+    vacio.className = "team-history-empty";
+    vacio.innerText = "Todavía no hay equipos fijados. Las combinaciones aparecerán aquí al pulsar «Fijar equipos».";
+    lista.appendChild(vacio);
+    return;
+  }
+
+  registros.forEach(registro => {
+    const detalle = document.createElement("details");
+    detalle.className = "team-history-record";
+
+    const fecha = new Date(`${registro.fecha}T00:00:00`);
+    const fechaTexto = fecha.toLocaleDateString("es-MX", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric"
+    });
+    const resumen = document.createElement("summary");
+    resumen.innerText = `${registro.grupoNombre} · ${NOMBRES_DIAS[registro.dia] || registro.dia} ${fechaTexto}`;
+
+    const metadatos = document.createElement("p");
+    metadatos.className = "team-history-meta";
+    metadatos.innerText = `${registro.inicio}–${registro.fin} · ${registro.cantidadEquipos} equipos`;
+
+    const equipos = document.createElement("div");
+    equipos.className = "team-history-teams";
+    registro.equipos.forEach((miembros, indice) => {
+      const equipo = document.createElement("section");
+      const titulo = document.createElement("strong");
+      titulo.innerText = `Equipo ${indice + 1}`;
+      const nombres = document.createElement("p");
+      nombres.innerText = miembros.length ? miembros.join(", ") : "Sin asignar";
+      equipo.append(titulo, nombres);
+      equipos.appendChild(equipo);
+    });
+
+    detalle.append(resumen, metadatos, equipos);
+    lista.appendChild(detalle);
+  });
+}
+
 // GUARDADO DE LA LISTA DE ALUMNOS DEL GRUPO ACTIVO
 function guardarAlumnosDelGrupoActivo() {
   const grupo = gruposConfigurados.find(g => g.id === grupoActivoKey);
@@ -425,6 +617,11 @@ function guardarAlumnosDelGrupoActivo() {
 }
 
 function generarEquiposAleatorios() {
+  if (!grupoActivoKey || !claveSesionEquipos) {
+    alert("Selecciona un grupo antes de sortear los equipos.");
+    return;
+  }
+
   const inputEstudiantes = document.getElementById("input-students").value;
   let alumnos = inputEstudiantes.split(/[,\n]/).map(name => name.trim()).filter(name => name.length > 0);
 
@@ -440,8 +637,10 @@ function generarEquiposAleatorios() {
 
   const equipos = Array.from({ length: cantidadEquipos }, () => []);
   alumnos.forEach((alumno, index) => equipos[index % cantidadEquipos].push(alumno));
+  equiposActuales = equipos;
+  equiposActualesFijados = false;
   mostrarEquipos(equipos);
-  guardarEquiposGrupo(equipos);
+  actualizarEstadoEquipos("Sorteo nuevo sin fijar. Puedes volver a sortear o guardar esta combinación.");
 
   const section = document.getElementById("teams-section");
   section.classList.remove("collapsed");
