@@ -84,6 +84,22 @@ body.theme-violet {
   --quote-color: #e9d5ff;
 }
 
+body.theme-christmas {
+  --bg-dark: #0b1b2b;
+  --card-bg: #164733;
+  --card-border: #3d7956;
+  --text-main: #fcf9f2;
+  --text-muted: #c3d9cc;
+  --accent-blue: #f47770;
+  --accent-cyan: #f7b801;
+  --accent-winter: #8ecae6;
+  --holiday-red: #d62828;
+  --quote-color: #f7b801;
+  background-image:
+    radial-gradient(ellipse at 10% 0%, rgba(214, 40, 40, 0.2), transparent 34%),
+    radial-gradient(ellipse at 95% 100%, rgba(43, 89, 63, 0.38), transparent 38%);
+}
+
 /* FUENTES DE RELOJ */
 body.font-orbitron { --font-clock: 'Orbitron', sans-serif; }
 body.font-mono { --font-clock: 'Roboto Mono', monospace; }
@@ -143,6 +159,17 @@ body {
   border-radius: 5px;
   font-size: 1.2rem;
   font-weight: 800;
+}
+
+body:not(.theme-christmas) .christmas-tree {
+  display: none;
+}
+
+.christmas-tree {
+  margin-left: -6px;
+  font-size: 3rem;
+  line-height: 1;
+  filter: drop-shadow(0 0 10px rgba(247, 184, 1, 0.5));
 }
 
 /* FRASE MOTIVACIONAL - MEJOR LECTURA Y CONTRASTE */
@@ -457,7 +484,9 @@ select {
   .status-indicator.status-building,
   .status-indicator.status-disassemble,
   .disassemble-alert,
-  .progress-bar::after {
+  .progress-bar::after,
+  .christmas-decorations span,
+  .christmas-lights span {
     animation: none;
   }
 }
@@ -538,6 +567,115 @@ select {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+}
+
+body.theme-christmas .christmas-decorations {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 20;
+}
+
+body:not(.theme-christmas) .christmas-decorations {
+  display: none;
+}
+
+body.theme-christmas .top-bar {
+  position: relative;
+  margin-bottom: 28px;
+  border-top: 2px solid var(--holiday-red);
+  box-shadow: 0 0 18px rgba(214, 40, 40, 0.16);
+}
+
+body.theme-christmas .card {
+  border-color: #477358;
+  box-shadow: inset 0 1px rgba(247, 184, 1, 0.1), 0 0 14px rgba(13, 35, 25, 0.2);
+}
+
+.christmas-lights {
+  position: absolute;
+  bottom: -18px;
+  left: 5%;
+  right: 5%;
+  height: 32px;
+  display: none;
+  justify-content: space-between;
+  pointer-events: none;
+}
+
+body.theme-christmas .christmas-lights {
+  display: flex;
+}
+
+.christmas-lights::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 15px;
+  border-bottom: 1px solid rgba(252, 249, 242, 0.6);
+  border-radius: 0 0 50% 50%;
+}
+
+.christmas-lights span {
+  position: relative;
+  z-index: 1;
+  width: 14px;
+  height: 16px;
+  margin-top: 11px;
+  border-radius: 45% 45% 50% 50%;
+  color: var(--holiday-red);
+  background: currentColor;
+  box-shadow: 0 0 12px currentColor;
+  animation: christmas-twinkle 1.4s ease-in-out infinite alternate;
+}
+
+.christmas-lights span:nth-child(4n + 1) {
+  color: var(--holiday-red);
+}
+
+.christmas-lights span:nth-child(4n + 2) {
+  color: #65c87f;
+  animation-delay: 0.45s;
+}
+
+.christmas-lights span:nth-child(4n + 3) {
+  color: var(--accent-cyan);
+  animation-delay: 0.8s;
+}
+
+.christmas-lights span:nth-child(4n) {
+  color: var(--accent-winter);
+  animation-delay: 1.15s;
+}
+
+.christmas-decorations span {
+  position: absolute;
+  top: -8vh;
+  left: 8%;
+  color: var(--text-main);
+  font-size: 20px;
+  text-shadow: 0 0 10px rgba(142, 202, 230, 0.7);
+  animation: christmas-snowfall 12s linear infinite;
+}
+
+.christmas-decorations span:nth-child(2) { left: 19%; animation-delay: -7s; animation-duration: 15s; font-size: 13px; }
+.christmas-decorations span:nth-child(3) { left: 34%; animation-delay: -3s; animation-duration: 11s; font-size: 17px; }
+.christmas-decorations span:nth-child(4) { left: 48%; animation-delay: -9s; animation-duration: 16s; font-size: 12px; }
+.christmas-decorations span:nth-child(5) { left: 63%; animation-delay: -5s; animation-duration: 13s; font-size: 19px; }
+.christmas-decorations span:nth-child(6) { left: 76%; animation-delay: -11s; animation-duration: 17s; font-size: 14px; }
+.christmas-decorations span:nth-child(7) { left: 88%; animation-delay: -2s; animation-duration: 12s; font-size: 18px; }
+.christmas-decorations span:nth-child(8) { left: 96%; animation-delay: -8s; animation-duration: 14s; font-size: 12px; }
+
+@keyframes christmas-snowfall {
+  to { transform: translate3d(34px, 112vh, 0) rotate(280deg); }
+}
+
+@keyframes christmas-twinkle {
+  from { opacity: 0.55; }
+  to { opacity: 1; }
 }
 
 .team-card {
@@ -854,5 +992,12 @@ select {
 
   .group-config-fields {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .christmas-decorations span,
+  .christmas-lights span {
+    animation: none;
   }
 }
