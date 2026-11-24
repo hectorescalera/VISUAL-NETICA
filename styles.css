@@ -1200,6 +1200,25 @@ body.teams-expanded .session-title {
   border: 1px solid var(--card-border);
 }
 
+.config-section-title {
+  margin: 0;
+  padding-bottom: 5px;
+  border-bottom: 1px solid var(--card-border);
+  color: var(--accent-blue);
+  font-size: 0.95rem;
+}
+
+.config-modal-content .modal-actions {
+  position: sticky;
+  bottom: -20px;
+  z-index: 3;
+  flex-shrink: 0;
+  margin: 6px -20px -20px;
+  padding: 12px 20px 20px;
+  border-top: 1px solid var(--card-border);
+  background: var(--card-bg);
+}
+
 .modal-content label {
   font-size: 0.8rem;
   color: var(--text-muted);
@@ -1312,6 +1331,44 @@ body.teams-expanded .session-title {
   padding: 10px;
   border: 1px solid var(--card-border);
   border-radius: 8px;
+}
+
+.groups-config-disclosure {
+  flex: 0 0 auto;
+}
+
+.groups-config-summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  background: var(--bg-dark);
+  color: var(--text-main);
+  cursor: pointer;
+  list-style-position: inside;
+}
+
+.groups-config-summary::marker {
+  color: var(--accent-cyan);
+}
+
+.groups-config-summary-copy {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.groups-config-summary-copy strong {
+  color: var(--accent-blue);
+  font-size: 0.85rem;
+}
+
+.groups-config-summary-copy span {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 400;
 }
 
 .groups-config-heading,

@@ -155,8 +155,9 @@
 
   <!-- MODAL DE CONFIGURACIÓN -->
   <div class="modal-overlay hidden" id="config-modal">
-    <div class="modal-content">
+    <div class="modal-content config-modal-content">
       <h2>⚙️ Configuración y Personalización</h2>
+      <h3 class="config-section-title">Ajustes de uso frecuente</h3>
 
       <div class="config-row">
         <div style="flex: 0.4;">
@@ -184,22 +185,6 @@
 
       <label for="input-video-url">Enlace de Video de YouTube:</label>
       <input type="text" id="input-video-url" value="https://www.youtube.com/watch?v=aqz-KE-bpKQ" placeholder="https://www.youtube.com/watch?v=...">
-
-      <section class="groups-config">
-        <div class="groups-config-heading">
-          <div>
-            <h3>Grupos, horarios y alumnos</h3>
-            <p>Descarga un archivo .xlsx para abrirlo y editarlo en Excel o Google Sheets; al terminar, impórtalo aquí. También puedes importar archivos CSV anteriores.</p>
-          </div>
-          <div class="groups-file-actions">
-            <button type="button" class="btn-secondary" onclick="descargarPlantillaGrupos()">Descargar Excel (.xlsx)</button>
-            <button type="button" class="btn-secondary" onclick="document.getElementById('group-import-file').click()">Importar Excel o CSV</button>
-            <input type="file" id="group-import-file" accept=".xlsx,.csv,.tsv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,text/tab-separated-values" onchange="importarGruposCSV(this)">
-          </div>
-        </div>
-        <div id="groups-config-list"></div>
-        <button type="button" class="btn-secondary add-group-button" onclick="agregarGrupoConfig()">＋ Agregar grupo</button>
-      </section>
 
       <div class="class-settings-row">
         <div class="team-count-setting">
@@ -245,6 +230,29 @@
           </select>
         </div>
       </div>
+
+      <details class="groups-config-disclosure">
+        <summary class="groups-config-summary">
+          <span class="groups-config-summary-copy">
+            <strong>Grupos, horarios y alumnos</strong>
+            <span>Opcional · abre para editar listas, horarios o importar archivos.</span>
+          </span>
+        </summary>
+        <section class="groups-config">
+          <div class="groups-config-heading">
+            <div>
+              <p>Descarga un archivo .xlsx para editarlo en Excel o Google Sheets y luego impórtalo aquí. También puedes importar archivos CSV anteriores.</p>
+            </div>
+            <div class="groups-file-actions">
+              <button type="button" class="btn-secondary" onclick="descargarPlantillaGrupos()">Descargar Excel (.xlsx)</button>
+              <button type="button" class="btn-secondary" onclick="document.getElementById('group-import-file').click()">Importar Excel o CSV</button>
+              <input type="file" id="group-import-file" accept=".xlsx,.csv,.tsv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,text/tab-separated-values" onchange="importarGruposCSV(this)">
+            </div>
+          </div>
+          <div id="groups-config-list"></div>
+          <button type="button" class="btn-secondary add-group-button" onclick="agregarGrupoConfig()">＋ Agregar grupo</button>
+        </section>
+      </details>
 
       <div class="modal-actions">
         <button class="btn-save" onclick="guardarConfiguracion()">Guardar y Aplicar</button>
