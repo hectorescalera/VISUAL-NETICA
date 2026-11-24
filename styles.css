@@ -941,8 +941,32 @@ body.theme-christmas .christmas-lights {
   display: inline-flex;
   flex: 0 0 auto;
   align-items: center;
-  gap: 2px;
+  gap: 3px;
   margin-left: 3px;
+}
+
+.grade-adjust-button {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid var(--card-border);
+  border-radius: 4px;
+  background: var(--bg-dark);
+  color: var(--text-main);
+  font-size: 0.75rem;
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.grade-adjust-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.grade-adjust-button:not(:disabled):hover {
+  border-color: var(--accent-cyan);
+  color: var(--accent-cyan);
 }
 
 .grade-input {
@@ -1398,12 +1422,34 @@ body.teams-expanded .session-title {
 }
 
 .team-history-content {
-  max-width: 760px;
+  width: max-content;
+  min-width: min(760px, 96vw);
+  max-width: min(1200px, 96vw);
+  overflow-x: hidden;
 }
 
 .team-history-content > p {
   color: var(--text-muted);
   font-size: 0.8rem;
+}
+
+.grades-config-content > p {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.grades-config-content select {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid var(--card-border);
+  border-radius: 5px;
+  background: var(--bg-dark);
+  color: var(--text-main);
+}
+
+.team-history-actions {
+  display: flex;
+  justify-content: flex-end;
 }
 
 .team-history-list {
@@ -1425,9 +1471,23 @@ body.teams-expanded .session-title {
 }
 
 .team-history-record summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
   color: var(--accent-cyan);
   font-weight: 700;
   cursor: pointer;
+}
+
+.team-history-download {
+  flex: 0 0 auto;
+  padding: 4px 8px;
+  font-size: 0.72rem;
+}
+
+.team-history-download-table {
+  margin: 8px 0;
 }
 
 .team-history-meta {
@@ -1477,6 +1537,36 @@ body.teams-expanded .session-title {
 .team-history-member.is-absent .team-history-member-name {
   color: var(--alert-red);
   font-weight: 600;
+}
+
+.team-history-grade {
+  margin-left: auto;
+  color: var(--accent-cyan);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.team-history-table-wrap {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.team-history-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.75rem;
+}
+
+.team-history-table th,
+.team-history-table td {
+  padding: 6px 8px;
+  border: 1px solid var(--card-border);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.team-history-table th {
+  color: var(--accent-cyan);
 }
 
 .team-history-members > p {

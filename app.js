@@ -89,6 +89,9 @@ let modoAsistenciaActivo = false;
 let historialEvaluacion = [];
 let resultadosEquiposActuales = new Map();
 let calificacionesManualesActuales = new Map();
+let ajustesCalificacionActuales = new Map();
+let calificacionMinimaFalta = 0;
+let calificacionMaximaAjustes = 10;
 let modoEvaluacionActivo = false;
 let temporizadorGuardadoAlumnos = null;
 
@@ -174,6 +177,7 @@ function cambiarGrupo() {
     modoAsistenciaActivo = false;
     resultadosEquiposActuales = new Map();
     calificacionesManualesActuales = new Map();
+    ajustesCalificacionActuales = new Map();
     limpiarRelojClase();
     document.getElementById("input-students").value = "";
     mostrarEquipos([]);
@@ -537,7 +541,10 @@ function mostrarEquipos(equipos) {
     title.className = "team-title";
     const titleText = document.createElement("span");
     titleText.innerText = `Equipo ${n}`;
-    title.append(titleText, crearControlResultadoEquipo(n));
+    title.appendChild(titleText);
+    if (modoEvaluacionActivo) {
+      title.appendChild(crearControlResultadoEquipo(n));
+    }
 
     const list = document.createElement("ul");
     list.className = "team-members-list";
@@ -551,8 +558,12 @@ function mostrarEquipos(equipos) {
       nombreAlumno.innerText = nombre;
       li.appendChild(nombreAlumno);
       if (nombre !== "Sin asignar") {
-        li.appendChild(crearMarcaAsistencia(nombre));
-        li.appendChild(crearControlCalificacion(nombre, n));
+        if (modoAsistenciaActivo) {
+          li.appendChild(crearMarcaAsistencia(nombre));
+        }
+        if (modoEvaluacionActivo) {
+          li.appendChild(crearControlCalificacion(nombre, n));
+        }
       }
       list.appendChild(li);
     });
@@ -626,6 +637,40 @@ function cerrarHistorialEquipos() {
   document.getElementById("team-history-modal").classList.add("hidden");
 }
 
+function abrirConfiguracionCalificaciones() {
+  document.getElementById("select-minimum-grade").value = String(calificacionMinimaFalta);
+  document.getElementById("select-maximum-grade").value = String(calificacionMaximaAjustes);
+  document.getElementById("grades-config-modal").classList.remove("hidden");
+}
+
+function cerrarConfiguracionCalificaciones() {
+  document.getElementById("grades-config-modal").classList.add("hidden");
+}
+
+function guardarConfiguracionCalificaciones() {
+  const minima = Number(document.getElementById("select-minimum-grade").value);
+  const maxima = Number(document.getElementById("select-maximum-grade").value);
+  if (![0, 5, 6].includes(minima) || ![8, 9, 10].includes(maxima) || minima > maxima) {
+    alert("La calificación mínima debe ser menor o igual que la máxima.");
+    return;
+  }
+  const minimaAnterior = calificacionMinimaFalta;
+  const maximaAnterior = calificacionMaximaAjustes;
+  calificacionMinimaFalta = minima;
+  calificacionMaximaAjustes = maxima;
+  if (historialEvaluacion.some(item => item.clave === claveSesionEquipos) && !guardarSnapshotEvaluacionSiExiste()) {
+    calificacionMinimaFalta = minimaAnterior;
+    calificacionMaximaAjustes = maximaAnterior;
+    return;
+  }
+  guardarEnLocalStorage();
+  mostrarEquipos(equiposActuales);
+  if (!document.getElementById("team-history-modal").classList.contains("hidden")) {
+    renderizarHistorialEquipos();
+  }
+  cerrarConfiguracionCalificaciones();
+}
+
 function renderizarHistorialEquipos() {
   const lista = document.getElementById("team-history-list");
   lista.innerHTML = "";
@@ -659,7 +704,20 @@ function renderizarHistorialEquipos() {
       year: "numeric"
     });
     const resumen = document.createElement("summary");
-    resumen.innerText = `${registro.grupoNombre} · ${NOMBRES_DIAS[registro.dia] || registro.dia} ${fechaTexto}`;
+    resumen.className = "team-history-record-header";
+    const textoResumen = document.createElement("span");
+    textoResumen.innerText = `${registro.grupoNombre} · ${NOMBRES_DIAS[registro.dia] || registro.dia} ${fechaTexto}`;
+    const botonDescarga = document.createElement("button");
+    botonDescarga.type = "button";
+    botonDescarga.className = "btn-secondary team-history-download";
+    botonDescarga.innerText = "⬇ Excel";
+    botonDescarga.title = `Descargar historial de ${registro.grupoNombre} del ${fechaTexto}`;
+    botonDescarga.addEventListener("click", event => {
+      event.preventDefault();
+      event.stopPropagation();
+      descargarRegistroEquipo(registro);
+    });
+    resumen.append(textoResumen, botonDescarga);
 
     const metadatos = document.createElement("p");
     metadatos.className = "team-history-meta";
@@ -667,6 +725,10 @@ function renderizarHistorialEquipos() {
 
     const equipos = document.createElement("div");
     equipos.className = "team-history-teams";
+    const marcas = new Map(
+      registroAsistencia ? registroAsistencia.marcas.map(item => [item.alumno, item.estado]) : []
+    );
+    const alumnosNotas = filasHistorialEquipo(registro);
     registro.equipos.forEach((miembros, indice) => {
       const equipo = document.createElement("section");
       const titulo = document.createElement("strong");
@@ -693,6 +755,13 @@ function renderizarHistorialEquipos() {
             if (estadoInfo.clase === "falta") fila.classList.add("is-absent");
             fila.appendChild(crearIndicadorAsistencia(estado, asistenciaCerrada, true));
           }
+          const datoAlumno = alumnosNotas.find(item => item.Nombre === alumno && item.Equipo === `Equipo ${indice + 1}`);
+          if (datoAlumno && datoAlumno.Calificación !== "") {
+            const nota = document.createElement("span");
+            nota.className = "team-history-grade";
+            nota.innerText = `Nota: ${datoAlumno.Calificación}`;
+            fila.appendChild(nota);
+          }
 
           listaMiembros.appendChild(fila);
         });
@@ -702,9 +771,179 @@ function renderizarHistorialEquipos() {
       equipos.appendChild(equipo);
     });
 
-    detalle.append(resumen, metadatos, equipos);
+    const tabla = crearTablaHistorialAlumnos(alumnosNotas);
+    const descargarTabla = document.createElement("button");
+    descargarTabla.type = "button";
+    descargarTabla.className = "btn-secondary team-history-download-table";
+    descargarTabla.innerText = "Ver hoja de datos";
+    descargarTabla.setAttribute("aria-expanded", "false");
+    descargarTabla.addEventListener("click", () => {
+      const visible = !tabla.classList.contains("hidden");
+      tabla.classList.toggle("hidden", visible);
+      descargarTabla.setAttribute("aria-expanded", String(!visible));
+      descargarTabla.innerText = visible ? "Ver hoja de datos" : "Ocultar hoja de datos";
+    });
+    detalle.append(resumen, metadatos, equipos, descargarTabla, tabla);
     lista.appendChild(detalle);
   });
+}
+
+function filasHistorialEquipo(registro) {
+  const evaluacion = historialEvaluacion.find(item => item.clave === registro.clave);
+  const asistencia = historialAsistencia.find(item => item.clave === registro.clave);
+  const listaCerrada = Boolean(asistencia && asistencia.tomada !== false);
+  const resultados = new Map(
+    evaluacion ? evaluacion.resultadosEquipos.map((resultado, indice) => [indice + 1, resultado]) : []
+  );
+  const notasManuales = new Map(evaluacion ? evaluacion.calificaciones.map(item => [item.alumno, item.nota]) : []);
+  const ajustes = new Map(
+    evaluacion && Array.isArray(evaluacion.ajustes)
+      ? evaluacion.ajustes.map(item => [item.alumno, item.ajuste])
+      : []
+  );
+  const estados = new Map(asistencia ? asistencia.marcas.map(item => [item.alumno, item.estado]) : []);
+  return registro.equipos.flatMap((miembros, indice) => miembros.map(alumno => {
+    const nota = calcularCalificacion({
+      alumno,
+      numeroEquipo: indice + 1,
+      resultados,
+      notasManuales,
+      ajustes,
+      estadosAsistencia: estados,
+      asistenciaTomada: listaCerrada,
+      minima: evaluacion && Number.isInteger(evaluacion.calificacionMinima)
+        ? evaluacion.calificacionMinima
+        : asistencia && Number.isInteger(asistencia.calificacionMinima)
+          ? asistencia.calificacionMinima
+          : calificacionMinimaFalta,
+      maxima: evaluacion && Number.isInteger(evaluacion.calificacionMaxima)
+        ? evaluacion.calificacionMaxima
+        : calificacionMaximaAjustes
+    });
+    const estado = estados.get(alumno) || "";
+    return {
+      Grupo: registro.grupoNombre,
+      Fecha: registro.fecha,
+      Día: NOMBRES_DIAS[registro.dia] || registro.dia,
+      Horario: `${registro.inicio}–${registro.fin}`,
+      Equipo: `Equipo ${indice + 1}`,
+      Nombre: alumno,
+      Asistencia: obtenerValorAsistenciaReporte(estado, listaCerrada),
+      Calificación: nota.nota === null ? "" : nota.nota,
+      "Resultado del equipo": etiquetaResultadoEquipo(resultados.get(indice + 1) || "pendiente"),
+      Ajuste: ajustes.get(alumno) || 0
+    };
+  }));
+}
+
+function obtenerValorAsistenciaReporte(estado, listaCerrada) {
+  const clase = obtenerEstadoAsistencia(estado, listaCerrada).clase;
+  if (clase === "presente" || clase === "retardo") return 1;
+  if (clase === "falta" || clase === "justificada") return 0;
+  return "";
+}
+
+function filasEquiposHistorial(registro) {
+  const evaluacion = historialEvaluacion.find(item => item.clave === registro.clave);
+  return registro.equipos.map((miembros, indice) => ({
+    Grupo: registro.grupoNombre,
+    Fecha: registro.fecha,
+    Equipo: `Equipo ${indice + 1}`,
+    Resultado: etiquetaResultadoEquipo(
+      evaluacion ? evaluacion.resultadosEquipos[indice] || "pendiente" : "pendiente"
+    ),
+    Integrantes: miembros.join(", ")
+  }));
+}
+
+function crearLibroHistorial(registros) {
+  const filasAlumnos = registros.flatMap(filasHistorialEquipo);
+  const filasEquipos = registros.flatMap(filasEquiposHistorial);
+  const filasSesiones = registros.map(registro => ({
+    Grupo: registro.grupoNombre,
+    Fecha: registro.fecha,
+    Día: NOMBRES_DIAS[registro.dia] || registro.dia,
+    Horario: `${registro.inicio}–${registro.fin}`,
+    "Cantidad de equipos": registro.cantidadEquipos,
+    "Fijado": registro.fijado ? "Sí" : "No"
+  }));
+  const libro = window.XLSX.utils.book_new();
+  [
+    { nombre: "Sesiones", filas: filasSesiones, columnas: ["Grupo", "Fecha", "Día", "Horario", "Cantidad de equipos", "Fijado"] },
+    { nombre: "Alumnos", filas: filasAlumnos, columnas: ["Grupo", "Fecha", "Día", "Horario", "Equipo", "Nombre", "Asistencia", "Calificación", "Resultado del equipo", "Ajuste"] },
+    { nombre: "Equipos", filas: filasEquipos, columnas: ["Grupo", "Fecha", "Equipo", "Resultado", "Integrantes"] }
+  ].forEach(({ nombre, filas, columnas }) => {
+    const hoja = window.XLSX.utils.json_to_sheet(filas, { header: columnas });
+    hoja["!cols"] = columnas.map(clave => ({
+      wch: Math.min(32, Math.max(clave.length + 2, ...filas.map(fila => String(fila[clave] || "").length + 2)))
+    }));
+    window.XLSX.utils.book_append_sheet(libro, hoja, nombre);
+  });
+  return libro;
+}
+
+function descargarRegistroEquipo(registro) {
+  if (!window.XLSX) {
+    alert("No se pudo cargar el componente de Excel. Revisa tu conexión a internet e inténtalo de nuevo.");
+    return;
+  }
+  try {
+    const libro = crearLibroHistorial([registro]);
+    window.XLSX.writeFile(libro, `historial-${registro.grupoId}-${registro.fecha}.xlsx`);
+  } catch (error) {
+    console.error("No se pudo exportar el historial del equipo", error);
+    alert("No se pudo descargar el historial de este grupo.");
+  }
+}
+
+function descargarHistorialEquipos() {
+  if (!window.XLSX) {
+    alert("No se pudo cargar el componente de Excel. Revisa tu conexión a internet e inténtalo de nuevo.");
+    return;
+  }
+  if (historialEquipos.length === 0) {
+    alert("Todavía no hay equipos fijados para descargar.");
+    return;
+  }
+  try {
+    window.XLSX.writeFile(crearLibroHistorial(historialEquipos), "historial-completo-equipos.xlsx");
+  } catch (error) {
+    console.error("No se pudo exportar el historial completo de equipos", error);
+    alert("No se pudo descargar el historial completo.");
+  }
+}
+
+function crearTablaHistorialAlumnos(alumnos) {
+  const contenedor = document.createElement("div");
+  contenedor.className = "team-history-table-wrap hidden";
+  const tabla = document.createElement("table");
+  tabla.className = "team-history-table";
+  const encabezado = tabla.createTHead().insertRow();
+  const columnas = [
+    "Nombre",
+    "Equipo",
+    "Asistencia",
+    "Calificación",
+    "Resultado del equipo",
+    "Ajuste"
+  ];
+  columnas.forEach(titulo => {
+    const celda = document.createElement("th");
+    celda.innerText = titulo;
+    encabezado.appendChild(celda);
+  });
+  const cuerpo = tabla.createTBody();
+  alumnos.forEach(alumno => {
+    const fila = cuerpo.insertRow();
+    columnas.forEach(columna => {
+      const valor = columna === "Ajuste" && alumno[columna] > 0
+        ? `+${alumno[columna]}`
+        : alumno[columna];
+      fila.insertCell().innerText = String(valor);
+    });
+  });
+  contenedor.appendChild(tabla);
+  return contenedor;
 }
 
 function alternarModoAsistencia() {
@@ -786,6 +1025,7 @@ function esRegistroAsistenciaValido(registro) {
       && estadosValidos.includes(marca.estado)
     )
     && (registro.tomada === undefined || typeof registro.tomada === "boolean")
+    && (registro.calificacionMinima === undefined || [0, 5, 6].includes(registro.calificacionMinima))
     && typeof registro.actualizadoEn === "string";
 }
 
@@ -946,6 +1186,13 @@ function crearControlCalificacion(alumno, numeroEquipo) {
   const controles = document.createElement("span");
   controles.className = "grade-controls";
 
+  const ajuste = ajustesCalificacionActuales.get(alumno) || 0;
+  const ajustePermitido = !calificacion.falta && calificacion.base !== null;
+  controles.append(
+    crearBotonAjusteCalificacion(alumno, -1, ajuste, !ajustePermitido || calificacion.nota <= calificacionMinimaFalta),
+    crearBotonAjusteCalificacion(alumno, 1, ajuste, !ajustePermitido || calificacion.nota >= calificacionMaximaAjustes)
+  );
+
   const input = document.createElement("input");
   input.type = "number";
   input.className = `grade-input grade-indicator-${calificacion.tipo}`;
@@ -988,15 +1235,84 @@ function crearControlCalificacion(alumno, numeroEquipo) {
   return controles;
 }
 
+function crearBotonAjusteCalificacion(alumno, cantidad, ajuste, deshabilitado) {
+  const boton = document.createElement("button");
+  boton.type = "button";
+  boton.className = "grade-adjust-button";
+  boton.innerText = cantidad > 0 ? "+" : "−";
+  boton.title = `${cantidad > 0 ? "Sumar" : "Restar"} un punto a la calificación automática (ajuste actual: ${ajuste > 0 ? "+" : ""}${ajuste})`;
+  boton.setAttribute("aria-label", boton.title);
+  boton.disabled = deshabilitado || !modoEvaluacionActivo || !claveSesionEquipos;
+  boton.addEventListener("click", () => ajustarCalificacion(alumno, cantidad));
+  return boton;
+}
+
 function obtenerCalificacionAlumno(alumno, numeroEquipo) {
   if (calificacionesManualesActuales.has(alumno)) {
-    return { nota: calificacionesManualesActuales.get(alumno), manual: true, tipo: "manual" };
+    return {
+      nota: calificacionesManualesActuales.get(alumno),
+      manual: true,
+      tipo: "manual",
+      falta: false,
+      base: null
+    };
   }
 
-  const resultado = obtenerResultadoEquipo(numeroEquipo);
-  if (resultado === "terminado") return { nota: 10, manual: false, tipo: "automatica" };
-  if (resultado === "no_terminado") return { nota: 8, manual: false, tipo: "automatica" };
-  return { nota: null, manual: false, tipo: "pendiente" };
+  return calcularCalificacion({
+    alumno,
+    numeroEquipo,
+    resultados: resultadosEquiposActuales,
+    notasManuales: calificacionesManualesActuales,
+    ajustes: ajustesCalificacionActuales,
+    estadosAsistencia: asistenciaActual,
+    asistenciaTomada,
+    minima: calificacionMinimaFalta,
+    maxima: calificacionMaximaAjustes
+  });
+}
+
+function calcularCalificacion({
+  alumno,
+  numeroEquipo,
+  resultados,
+  notasManuales,
+  ajustes,
+  estadosAsistencia,
+  asistenciaTomada: listaCerrada,
+  minima,
+  maxima
+}) {
+  if (notasManuales.has(alumno)) {
+    return { nota: notasManuales.get(alumno), manual: true, tipo: "manual", falta: false, base: null };
+  }
+
+  const estadoAsistencia = estadosAsistencia.get(alumno) || "";
+  const falta = estadoAsistencia === "falta" || (!estadoAsistencia && listaCerrada);
+  if (falta) return { nota: minima, manual: false, tipo: "automatica", falta: true, base: minima };
+
+  const resultado = resultados.get(numeroEquipo) || "pendiente";
+  const base = resultado === "terminado" ? 10 : resultado === "no_terminado" ? 8 : null;
+  if (base === null) return { nota: null, manual: false, tipo: "pendiente", falta: false, base: null };
+  const nota = Math.min(maxima, Math.max(minima, base + (ajustes.get(alumno) || 0)));
+  return { nota, manual: false, tipo: "automatica", falta: false, base };
+}
+
+function ajustarCalificacion(alumno, cantidad) {
+  if (!modoEvaluacionActivo || !claveSesionEquipos) return;
+  const equipo = equiposActuales.findIndex(miembros => miembros.includes(alumno));
+  if (equipo < 0) return;
+  const calificacion = obtenerCalificacionAlumno(alumno, equipo + 1);
+  if (calificacion.manual || calificacion.falta || calificacion.base === null) return;
+
+  const nuevaNota = Math.min(
+    calificacionMaximaAjustes,
+    Math.max(calificacionMinimaFalta, calificacion.nota + cantidad)
+  );
+  const nuevosAjustes = new Map(ajustesCalificacionActuales);
+  nuevosAjustes.set(alumno, (ajustesCalificacionActuales.get(alumno) || 0) + nuevaNota - calificacion.nota);
+  if (!guardarRegistroEvaluacion(resultadosEquiposActuales, calificacionesManualesActuales, nuevosAjustes)) return;
+  ajustesCalificacionActuales = nuevosAjustes;
+  mostrarEquipos(equiposActuales);
 }
 
 function guardarResultadoEquipo(numeroEquipo, resultado) {
@@ -1028,12 +1344,12 @@ function guardarCalificacionManual(alumno, input) {
     calificacionesNuevas.set(alumno, nota);
   }
 
-  if (!guardarRegistroEvaluacion(resultadosEquiposActuales, calificacionesNuevas)) return;
+  if (!guardarRegistroEvaluacion(resultadosEquiposActuales, calificacionesNuevas, ajustesCalificacionActuales)) return;
   calificacionesManualesActuales = calificacionesNuevas;
   mostrarEquipos(equiposActuales);
 }
 
-function crearRegistroEvaluacion(resultados, calificaciones) {
+function crearRegistroEvaluacion(resultados, calificaciones, ajustes = ajustesCalificacionActuales) {
   const grupo = gruposConfigurados.find(item => item.id === grupoActivoKey);
   if (!grupo || !claveSesionEquipos) return null;
 
@@ -1056,12 +1372,15 @@ function crearRegistroEvaluacion(resultados, calificaciones) {
       (_, indice) => resultados.get(indice + 1) || "pendiente"
     ),
     calificaciones: Array.from(calificaciones, ([alumno, nota]) => ({ alumno, nota })),
+    ajustes: Array.from(ajustes, ([alumno, ajuste]) => ({ alumno, ajuste })),
+    calificacionMinima: calificacionMinimaFalta,
+    calificacionMaxima: calificacionMaximaAjustes,
     actualizadoEn: new Date().toISOString()
   };
 }
 
-function guardarRegistroEvaluacion(resultados, calificaciones) {
-  const registro = crearRegistroEvaluacion(resultados, calificaciones);
+function guardarRegistroEvaluacion(resultados, calificaciones, ajustes = ajustesCalificacionActuales) {
+  const registro = crearRegistroEvaluacion(resultados, calificaciones, ajustes);
   if (!registro) return false;
 
   const indice = historialEvaluacion.findIndex(item => item.clave === registro.clave);
@@ -1129,6 +1448,19 @@ function esRegistroEvaluacionValido(registro) {
       && calificacion.nota >= 0
       && calificacion.nota <= 10
     )
+    && (registro.ajustes === undefined || (
+      Array.isArray(registro.ajustes)
+      && registro.ajustes.every(ajuste =>
+        ajuste
+        && typeof ajuste.alumno === "string"
+        && Number.isInteger(ajuste.ajuste)
+      )
+    ))
+    && (registro.calificacionMinima === undefined || [0, 5, 6].includes(registro.calificacionMinima))
+    && (registro.calificacionMaxima === undefined || [8, 9, 10].includes(registro.calificacionMaxima))
+    && !(Number.isInteger(registro.calificacionMinima)
+      && Number.isInteger(registro.calificacionMaxima)
+      && registro.calificacionMinima > registro.calificacionMaxima)
     && typeof registro.actualizadoEn === "string";
 }
 
@@ -1150,6 +1482,11 @@ function cargarEvaluacionSesionActual() {
   }
   calificacionesManualesActuales = new Map(
     registro ? registro.calificaciones.map(item => [item.alumno, item.nota]) : []
+  );
+  ajustesCalificacionActuales = new Map(
+    registro && Array.isArray(registro.ajustes)
+      ? registro.ajustes.map(item => [item.alumno, item.ajuste])
+      : []
   );
   modoEvaluacionActivo = false;
   actualizarControlesEvaluacion();
@@ -1245,6 +1582,7 @@ function crearRegistroAsistencia(estados, tomada) {
     alumnos: parsearListaAlumnos(document.getElementById("input-students").value),
     marcas: Array.from(estados, ([nombre, estado]) => ({ alumno: nombre, estado })),
     tomada,
+    calificacionMinima: calificacionMinimaFalta,
     actualizadoEn: new Date().toISOString()
   };
 }
@@ -1294,6 +1632,13 @@ function actualizarMarcaAsistenciaEnEquipos(alumno) {
       }
     } else if (marcaActual) {
       marcaActual.replaceWith(marcaNueva);
+    }
+
+    const lista = fila.closest(".team-members-list");
+    const numeroEquipo = Number(lista.id.replace("team-", ""));
+    const calificacionActual = fila.querySelector(".grade-indicator, .grade-controls");
+    if (calificacionActual) {
+      calificacionActual.replaceWith(crearControlCalificacion(alumno, numeroEquipo));
     }
   });
 }
@@ -1996,6 +2341,8 @@ function guardarEnLocalStorage() {
     groups: gruposConfigurados,
     teamCount: cantidadEquipos,
     disassembleMinutes: minutosAntesDesarme,
+    minimumAbsenceGrade: calificacionMinimaFalta,
+    maximumAdjustmentGrade: calificacionMaximaAjustes,
     theme: temaActual,
     font: fuenteActual
   };
@@ -2048,6 +2395,12 @@ function cargarConfiguracionGuardada() {
         minutosAntesDesarme = config.disassembleMinutes;
       }
       document.getElementById("input-disassemble-minutes").value = minutosAntesDesarme;
+      if ([0, 5, 6].includes(config.minimumAbsenceGrade)) {
+        calificacionMinimaFalta = config.minimumAbsenceGrade;
+      }
+      if ([8, 9, 10].includes(config.maximumAdjustmentGrade)) {
+        calificacionMaximaAjustes = config.maximumAdjustmentGrade;
+      }
       actualizarHoraDesarme();
       
       if (config.theme) {

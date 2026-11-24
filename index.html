@@ -134,6 +134,7 @@
           <button class="btn-icon-only" id="btn-fix-teams" onclick="fijarEquiposActuales()" title="Fijar equipos" aria-label="Fijar equipos" disabled>📌</button>
           <button class="btn-icon-only" id="btn-reset-teams" onclick="reiniciarEquiposSesion()" title="Reiniciar equipos de esta sesión" aria-label="Reiniciar equipos de esta sesión" disabled>↻</button>
           <button class="btn-icon-only" onclick="abrirHistorialEquipos()" title="Historial de equipos" aria-label="Historial de equipos">📚</button>
+          <button class="btn-icon-only" onclick="abrirConfiguracionCalificaciones()" title="Configurar calificaciones" aria-label="Configurar calificaciones">⚙️</button>
           <button class="btn-icon-only" id="btn-attendance-mode" onclick="alternarModoAsistencia()" title="Activar toma de asistencia" aria-label="Activar toma de asistencia" aria-pressed="false">📝</button>
           <button class="btn-icon-only" id="btn-evaluation-mode" onclick="alternarModoEvaluacion()" title="Activar evaluación" aria-label="Activar evaluación" aria-pressed="false" disabled>🏅</button>
           <button class="btn-icon-only" onclick="abrirHistorialAsistencia()" title="Historial de asistencia" aria-label="Historial de asistencia">📅</button>
@@ -251,10 +252,36 @@
     </div>
   </div>
 
+  <div class="modal-overlay hidden" id="grades-config-modal" role="dialog" aria-modal="true" aria-labelledby="grades-config-title">
+    <div class="modal-content grades-config-content">
+      <h2 id="grades-config-title">Configuración de calificaciones</h2>
+      <p>La falta automática usa la nota mínima. Los ajustes +/− se aplican a la nota base del equipo y respetan estos límites. Las notas manuales siguen siendo independientes.</p>
+      <label for="select-minimum-grade">Calificación automática por falta (mínima):</label>
+      <select id="select-minimum-grade">
+        <option value="0">0</option>
+        <option value="5">5</option>
+        <option value="6">6</option>
+      </select>
+      <label for="select-maximum-grade">Calificación máxima para ajustes +/−:</label>
+      <select id="select-maximum-grade">
+        <option value="8">8</option>
+        <option value="9">9</option>
+        <option value="10">10</option>
+      </select>
+      <div class="modal-actions">
+        <button class="btn-save" onclick="guardarConfiguracionCalificaciones()">Guardar</button>
+        <button class="btn-close" onclick="cerrarConfiguracionCalificaciones()">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
   <div class="modal-overlay hidden" id="team-history-modal" role="dialog" aria-modal="true" aria-labelledby="team-history-title">
     <div class="modal-content team-history-content">
       <h2 id="team-history-title">Historial de equipos fijados</h2>
       <p>Consulta las combinaciones guardadas por grupo, día y fecha.</p>
+      <div class="team-history-actions">
+        <button class="btn-secondary" onclick="descargarHistorialEquipos()">Descargar historial completo (.xlsx)</button>
+      </div>
       <div class="team-history-list" id="team-history-list"></div>
       <div class="modal-actions">
         <button class="btn-close" onclick="cerrarHistorialEquipos()">Cerrar</button>
