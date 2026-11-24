@@ -150,6 +150,23 @@ body {
   font-size: 1.25rem;
   font-weight: 800;
   letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+
+.brand-acronym {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 9px;
+  border: 1px solid var(--alert-red);
+  border-radius: 6px;
+  background: rgba(214, 40, 40, 0.12);
+  color: var(--alert-red);
+  font-size: 1.15rem;
+  font-weight: 900;
+  letter-spacing: 0.14em;
+  line-height: 1;
+  text-shadow: 0 0 10px rgba(239, 68, 68, 0.3);
 }
 
 .badge {
@@ -604,6 +621,10 @@ select {
   flex-direction: column;
   gap: 4px;
   margin-bottom: 8px;
+}
+
+.daily-roster[hidden] {
+  display: none !important;
 }
 
 .daily-roster summary {
@@ -1575,6 +1596,19 @@ body.teams-expanded .session-title {
 }
 
 @media (max-width: 600px) {
+  .brand-zone {
+    gap: 8px;
+  }
+
+  #school-name {
+    font-size: 1rem;
+  }
+
+  .brand-acronym {
+    padding: 3px 6px;
+    font-size: 1rem;
+  }
+
   .groups-config-heading {
     align-items: flex-start;
     flex-direction: column;
@@ -1597,6 +1631,37 @@ body.teams-expanded .session-title {
 
   .group-config-fields {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .top-bar {
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px 16px;
+  }
+
+  .brand-zone,
+  .controls-zone,
+  .quote-zone {
+    flex: 1 1 100%;
+    justify-content: center;
+  }
+
+  .brand-zone {
+    order: 1;
+  }
+
+  .controls-zone {
+    order: 2;
+  }
+
+  .quote-zone {
+    order: 3;
+  }
+
+  .quote-zone p {
+    margin: 0;
   }
 }
 

@@ -26,6 +26,7 @@
     <div class="brand-zone">
       <span class="badge">NÉTICA</span>
       <span id="school-name">Instituto América</span>
+      <span class="brand-acronym">LVI</span>
       <span class="christmas-tree" aria-hidden="true">🎄</span>
     </div>
     <div class="quote-zone">
@@ -135,13 +136,13 @@
           <button class="btn-icon-only" id="btn-reset-teams" onclick="reiniciarEquiposSesion()" title="Reiniciar equipos de esta sesión" aria-label="Reiniciar equipos de esta sesión" disabled>↻</button>
           <button class="btn-icon-only" onclick="abrirHistorialEquipos()" title="Historial de equipos" aria-label="Historial de equipos">📚</button>
           <button class="btn-icon-only" onclick="abrirConfiguracionCalificaciones()" title="Configurar calificaciones" aria-label="Configurar calificaciones">⚙️</button>
-          <button class="btn-icon-only" id="btn-attendance-mode" onclick="alternarModoAsistencia()" title="Activar toma de asistencia" aria-label="Activar toma de asistencia" aria-pressed="false">📝</button>
+          <button class="btn-icon-only" id="btn-attendance-mode" onclick="alternarModoAsistencia()" title="Activar toma de asistencia" aria-label="Activar toma de asistencia" aria-pressed="false">🙋</button>
           <button class="btn-icon-only" id="btn-evaluation-mode" onclick="alternarModoEvaluacion()" title="Activar evaluación" aria-label="Activar evaluación" aria-pressed="false" disabled>🏅</button>
           <button class="btn-icon-only" onclick="abrirHistorialAsistencia()" title="Historial de asistencia" aria-label="Historial de asistencia">📅</button>
         </div>
       </div>
 
-      <details class="daily-roster" open>
+      <details class="daily-roster" open hidden>
         <summary>Alumnos del grupo (clic para editar)</summary>
         <textarea id="input-students" rows="2" aria-label="Alumnos del grupo" placeholder="Selecciona un grupo para cargar sus alumnos"></textarea>
       </details>
