@@ -86,6 +86,7 @@ const ESTADOS_ASISTENCIA_ANTERIORES = [
 let historialEquipos = [];
 let equiposActuales = [];
 let equiposActualesFijados = false;
+let alumnoArrastradoEquipo = null;
 let registroEquiposActualId = null;
 let claveSesionEquipos = null;
 let periodosEscolares = {
@@ -658,6 +659,7 @@ function mostrarEquipos(equipos) {
   const grid = document.getElementById("teams-grid-content");
   grid.innerHTML = "";
   document.getElementById("teams-title").innerText = `EQUIPOS DE TRABAJO (${cantidadEquipos} EQUIPOS)`;
+  const permiteAcomodar = puedeAcomodarEquiposManualmente();
 
   for (let n = 1; n <= cantidadEquipos; n++) {
     const card = document.createElement("div");
@@ -673,6 +675,28 @@ function mostrarEquipos(equipos) {
     const list = document.createElement("ul");
     list.className = "team-members-list";
     list.id = `team-${n}`;
+    list.dataset.teamIndex = String(n - 1);
+    list.addEventListener("dragover", event => {
+      if (!permiteAcomodar || !alumnoArrastradoEquipo) return;
+      event.preventDefault();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
+      list.classList.add("is-drop-target");
+    });
+    list.addEventListener("dragleave", event => {
+      if (!list.contains(event.relatedTarget)) list.classList.remove("is-drop-target");
+    });
+    list.addEventListener("drop", event => {
+      if (!permiteAcomodar || !alumnoArrastradoEquipo) return;
+      event.preventDefault();
+      list.classList.remove("is-drop-target");
+      const alumnoMovido = alumnoArrastradoEquipo;
+      alumnoArrastradoEquipo = null;
+      moverAlumnoEntreEquipos(
+        alumnoMovido.indiceEquipo,
+        Number(list.dataset.teamIndex),
+        alumnoMovido.alumno
+      );
+    });
 
     const miembros = equipos[n - 1] || [];
     (miembros.length ? miembros : ["Sin asignar"]).forEach(nombre => {
@@ -681,6 +705,30 @@ function mostrarEquipos(equipos) {
       nombreAlumno.className = "team-member-name";
       nombreAlumno.innerText = nombre;
       li.appendChild(nombreAlumno);
+      if (nombre !== "Sin asignar" && permiteAcomodar) {
+        li.draggable = true;
+        li.classList.add("team-member-draggable");
+        li.title = "Arrastra a otro equipo antes de fijar la combinación";
+        li.addEventListener("dragstart", event => {
+          if (!puedeAcomodarEquiposManualmente()) {
+            event.preventDefault();
+            return;
+          }
+          alumnoArrastradoEquipo = { indiceEquipo: n - 1, alumno: nombre };
+          if (event.dataTransfer) {
+            event.dataTransfer.effectAllowed = "move";
+            event.dataTransfer.setData("text/plain", nombre);
+          }
+          li.classList.add("is-dragging");
+        });
+        li.addEventListener("dragend", () => {
+          alumnoArrastradoEquipo = null;
+          li.classList.remove("is-dragging");
+          grid.querySelectorAll(".team-members-list").forEach(teamList =>
+            teamList.classList.remove("is-drop-target")
+          );
+        });
+      }
       if (nombre !== "Sin asignar") {
         if (modoAsistenciaActivo) {
           li.appendChild(crearMarcaAsistencia(nombre));
@@ -695,6 +743,34 @@ function mostrarEquipos(equipos) {
     card.append(title, list);
     grid.appendChild(card);
   }
+}
+
+function puedeAcomodarEquiposManualmente() {
+  return Boolean(
+    claveSesionEquipos
+    && !sesionSoloLectura
+    && !equiposActualesFijados
+    && !modoAsistenciaActivo
+    && !modoEvaluacionActivo
+    && !asistenciaTomada
+    && resultadosEquiposActuales.size === 0
+    && calificacionesManualesActuales.size === 0
+    && ajustesCalificacionActuales.size === 0
+  );
+}
+
+function moverAlumnoEntreEquipos(indiceOrigen, indiceDestino, alumno) {
+  if (!puedeAcomodarEquiposManualmente() || indiceOrigen === indiceDestino) return;
+  const equipoOrigen = equiposActuales[indiceOrigen];
+  const equipoDestino = equiposActuales[indiceDestino];
+  if (!equipoOrigen || !equipoDestino || equipoDestino.includes(alumno)) return;
+  const indiceAlumno = equipoOrigen.indexOf(alumno);
+  if (indiceAlumno === -1) return;
+
+  equipoOrigen.splice(indiceAlumno, 1);
+  equipoDestino.push(alumno);
+  mostrarEquipos(equiposActuales);
+  actualizarEstadoEquipos("Alumno movido. Puedes seguir ajustando los equipos y fijarlos cuando termines.");
 }
 
 function fijarEquiposActuales() {
@@ -735,6 +811,7 @@ function fijarEquiposActuales() {
   if (!guardarRegistroEquipos(registro)) return;
   equiposActualesFijados = true;
   registroEquiposActualId = registro.id;
+  mostrarEquipos(equiposActuales);
   actualizarEstadoEquipos("Equipos fijados para esta sesión y guardados en el historial.");
   renderizarHistorialEquipos();
 }
@@ -1839,10 +1916,17 @@ function crearControlCalificacion(alumno, numeroEquipo) {
   controles.className = "grade-controls";
 
   const ajuste = ajustesCalificacionActuales.get(alumno) || 0;
-  const ajustePermitido = !calificacion.falta && calificacion.base !== null;
+  const rangoCalificacion = calificacionMaximaAjustes - calificacionMinimaFalta;
+  const ajustePermitido = !calificacion.falta && !calificacion.manual && rangoCalificacion > 0;
+  const noPuedeReducir = calificacion.nota === null
+    ? ajuste <= -rangoCalificacion
+    : calificacion.nota <= calificacionMinimaFalta;
+  const noPuedeAumentar = calificacion.nota === null
+    ? ajuste >= rangoCalificacion
+    : calificacion.nota >= calificacionMaximaAjustes;
   controles.append(
-    crearBotonAjusteCalificacion(alumno, -1, ajuste, !ajustePermitido || calificacion.nota <= calificacionMinimaFalta),
-    crearBotonAjusteCalificacion(alumno, 1, ajuste, !ajustePermitido || calificacion.nota >= calificacionMaximaAjustes)
+    crearBotonAjusteCalificacion(alumno, -1, ajuste, !ajustePermitido || noPuedeReducir),
+    crearBotonAjusteCalificacion(alumno, 1, ajuste, !ajustePermitido || noPuedeAumentar)
   );
 
   const input = document.createElement("input");
@@ -1852,10 +1936,10 @@ function crearControlCalificacion(alumno, numeroEquipo) {
   input.max = String(calificacionMaximaAjustes);
   input.step = "1";
   input.value = calificacion.nota === null ? "" : String(calificacion.nota);
-  input.placeholder = "—";
+  input.placeholder = calificacion.nota === null ? "Nota" : "";
   input.title = calificacion.manual
-    ? `Calificación manual de ${alumno}`
-    : `Calificación automática; escribe un entero entre ${calificacionMinimaFalta} y ${calificacionMaximaAjustes} para reemplazarla`;
+    ? `Calificación manual de ${alumno}; se mantiene aunque cambie el resultado del equipo`
+    : `Escribe la calificación manual de ${alumno} en cualquier momento; tendrá prioridad sobre el resultado del equipo`;
   input.setAttribute("aria-label", `Calificación de ${alumno}, entero de ${calificacionMinimaFalta} a ${calificacionMaximaAjustes}`);
   let cambioManual = false;
   input.addEventListener("input", () => {
@@ -1873,6 +1957,14 @@ function crearControlCalificacion(alumno, numeroEquipo) {
     guardarCalificacionManual(alumno, input);
   });
   controles.appendChild(input);
+
+  if (calificacion.nota === null && ajuste !== 0) {
+    const ajustePendiente = document.createElement("span");
+    ajustePendiente.className = "grade-adjustment-pending";
+    ajustePendiente.innerText = `Δ${ajuste > 0 ? "+" : ""}${ajuste}`;
+    ajustePendiente.title = `Ajuste pendiente: ${ajuste > 0 ? "+" : ""}${ajuste}. Se aplicará a la calificación automática cuando se defina el resultado del equipo o se cierre la sesión.`;
+    controles.appendChild(ajustePendiente);
+  }
 
   if (calificacion.manual) {
     const reiniciar = document.createElement("button");
@@ -1973,14 +2065,24 @@ function ajustarCalificacion(alumno, cantidad) {
   const equipo = equiposActuales.findIndex(miembros => miembros.includes(alumno));
   if (equipo < 0) return;
   const calificacion = obtenerCalificacionAlumno(alumno, equipo + 1);
-  if (calificacion.manual || calificacion.falta || calificacion.base === null) return;
+  if (calificacion.manual || calificacion.falta) return;
 
-  const nuevaNota = Math.min(
-    calificacionMaximaAjustes,
-    Math.max(calificacionMinimaFalta, calificacion.nota + cantidad)
-  );
+  const ajusteActual = ajustesCalificacionActuales.get(alumno) || 0;
+  let nuevoAjuste;
+  if (calificacion.base === null) {
+    const rangoCalificacion = calificacionMaximaAjustes - calificacionMinimaFalta;
+    nuevoAjuste = Math.max(-rangoCalificacion, Math.min(rangoCalificacion, ajusteActual + cantidad));
+  } else {
+    const nuevaNota = Math.min(
+      calificacionMaximaAjustes,
+      Math.max(calificacionMinimaFalta, calificacion.nota + cantidad)
+    );
+    nuevoAjuste = ajusteActual + nuevaNota - calificacion.nota;
+  }
+  if (nuevoAjuste === ajusteActual) return;
+
   const nuevosAjustes = new Map(ajustesCalificacionActuales);
-  nuevosAjustes.set(alumno, (ajustesCalificacionActuales.get(alumno) || 0) + nuevaNota - calificacion.nota);
+  nuevosAjustes.set(alumno, nuevoAjuste);
   if (!guardarRegistroEvaluacion(resultadosEquiposActuales, calificacionesManualesActuales, nuevosAjustes)) return;
   ajustesCalificacionActuales = nuevosAjustes;
   mostrarEquipos(equiposActuales);
@@ -2511,7 +2613,11 @@ function generarEquiposAleatorios() {
   equiposActuales = equipos;
   equiposActualesFijados = false;
   mostrarEquipos(equipos);
-  actualizarEstadoEquipos("Sorteo nuevo sin fijar. Puedes volver a sortear o guardar esta combinación.");
+  actualizarEstadoEquipos(
+    puedeAcomodarEquiposManualmente()
+      ? "Sorteo nuevo sin fijar. Arrastra alumnos para ajustar los equipos y fija la combinación cuando termines."
+      : "Sorteo nuevo sin fijar. Puedes volver a sortear o guardar esta combinación."
+  );
 
   const section = document.getElementById("teams-section");
   section.classList.remove("collapsed");

@@ -888,6 +888,25 @@ body.theme-christmas .christmas-lights {
   border-left: 2px solid var(--accent-cyan);
 }
 
+.team-members-list.is-drop-target {
+  min-height: 24px;
+  outline: 1px dashed var(--accent-cyan);
+  outline-offset: 2px;
+  background: rgba(6, 182, 212, 0.08);
+}
+
+.team-member-draggable {
+  cursor: grab;
+}
+
+.team-member-draggable:active {
+  cursor: grabbing;
+}
+
+.team-member-draggable.is-dragging {
+  opacity: 0.45;
+}
+
 .team-member-name {
   min-width: 0;
   overflow-wrap: anywhere;
@@ -981,6 +1000,13 @@ body.theme-christmas .christmas-lights {
   align-items: center;
   gap: 3px;
   margin-left: 3px;
+}
+
+.grade-adjustment-pending {
+  color: var(--alert-orange);
+  font-size: 0.58rem;
+  font-weight: 700;
+  white-space: nowrap;
 }
 
 .grade-adjust-button {
