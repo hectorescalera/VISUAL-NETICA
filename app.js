@@ -1899,9 +1899,15 @@ function etiquetaResultadoEquipo(resultado) {
 
 function crearControlCalificacion(alumno, numeroEquipo) {
   const calificacion = obtenerCalificacionAlumno(alumno, numeroEquipo);
+  const resultadoEquipo = obtenerResultadoEquipo(numeroEquipo);
+  const claseEstadoEquipo = resultadoEquipo === "terminado"
+    ? "grade-result-terminado"
+    : resultadoEquipo === "no_terminado"
+      ? "grade-result-no_terminado"
+      : "";
   if (!modoEvaluacionActivo) {
     const indicador = document.createElement("span");
-    indicador.className = `grade-indicator grade-indicator-${calificacion.tipo}`;
+    indicador.className = `grade-indicator grade-indicator-${calificacion.tipo} ${claseEstadoEquipo}`;
     indicador.innerText = calificacion.nota === null ? "—" : String(calificacion.nota);
     indicador.title = calificacion.manual
       ? `Calificación manual de ${alumno}`
@@ -1931,7 +1937,7 @@ function crearControlCalificacion(alumno, numeroEquipo) {
 
   const input = document.createElement("input");
   input.type = "number";
-  input.className = `grade-input grade-indicator-${calificacion.tipo}`;
+  input.className = `grade-input grade-indicator-${calificacion.tipo} ${claseEstadoEquipo}`;
   input.min = String(calificacionMinimaFalta);
   input.max = String(calificacionMaximaAjustes);
   input.step = "1";

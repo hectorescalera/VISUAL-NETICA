@@ -994,6 +994,18 @@ body.theme-christmas .christmas-lights {
   color: var(--text-muted);
 }
 
+.grade-result-terminado {
+  border-color: var(--status-green);
+  background: rgba(34, 197, 94, 0.16);
+  color: var(--status-green);
+}
+
+.grade-result-no_terminado {
+  border-color: var(--alert-red);
+  background: rgba(239, 68, 68, 0.16);
+  color: var(--alert-red);
+}
+
 .grade-controls {
   display: inline-flex;
   flex: 0 0 auto;
