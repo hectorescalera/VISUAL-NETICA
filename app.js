@@ -60,6 +60,7 @@ let horaDesarmeClase = null;
 let horaFinClase = null;
 let sesionCerrada = false;
 let sesionCierreIntentada = false;
+let sesionCierrePendiente = false;
 let sesionSoloLectura = false;
 
 let temaActual = "theme-dark";
@@ -208,6 +209,17 @@ function aplicarCambioGrupoPendienteSiListo() {
   aplicarCambioGrupo(grupoPendienteKey, seleccionPendienteManual);
 }
 
+function actualizarAvisoCierrePendiente() {
+  const modosActivos = [];
+  if (modoAsistenciaActivo) modosActivos.push("la toma de asistencia");
+  if (modoEvaluacionActivo) modosActivos.push("la evaluación de equipos");
+  const aviso = document.getElementById("session-end-notice");
+  const horarioTerminado = horaFinClase && new Date() >= horaFinClase;
+  const motivo = horarioTerminado ? "El horario terminó" : "Se solicitó cerrar la sesión";
+  aviso.innerText = `${motivo}. La sesión seguirá abierta para que completes ${modosActivos.join(" y ")}. Al desactivar el último modo se guardarán los pendientes y se cerrará automáticamente.`;
+  aviso.classList.remove("hidden");
+}
+
 function aplicarCambioGrupo(grupoKey, seleccionManual = false) {
   const claseActualIniciada = horaInicioClase && new Date() >= horaInicioClase;
   if (claveSesionEquipos && grupoKey !== grupoActivoKey && claseActualIniciada && !sesionSoloLectura && !cerrarSesionActual()) {
@@ -217,10 +229,12 @@ function aplicarCambioGrupo(grupoKey, seleccionManual = false) {
   grupoCambioPendienteKey = null;
   grupoCambioPendienteManual = false;
   document.getElementById("session-change-notice").classList.add("hidden");
+  document.getElementById("session-end-notice").classList.add("hidden");
   document.getElementById("group-select").value = grupoKey;
   modoEvaluacionActivo = false;
   sesionCerrada = false;
   sesionCierreIntentada = false;
+  sesionCierrePendiente = false;
   sesionSoloLectura = false;
   registroEquiposActualId = null;
 
@@ -240,6 +254,7 @@ function aplicarCambioGrupo(grupoKey, seleccionManual = false) {
     ajustesCalificacionActuales = new Map();
     sesionCerrada = false;
     sesionCierreIntentada = false;
+    sesionCierrePendiente = false;
     sesionSoloLectura = false;
     registroEquiposActualId = null;
     limpiarRelojClase();
@@ -1544,6 +1559,7 @@ function reiniciarCicloEscolar() {
   registroEquiposActualId = null;
   sesionCerrada = false;
   sesionCierreIntentada = false;
+  sesionCierrePendiente = false;
   sesionSoloLectura = false;
   modoAsistenciaActivo = false;
   modoEvaluacionActivo = false;
@@ -1554,6 +1570,7 @@ function reiniciarCicloEscolar() {
   claveSesionEquipos = null;
   document.getElementById("group-select").value = "";
   document.getElementById("session-change-notice").classList.add("hidden");
+  document.getElementById("session-end-notice").classList.add("hidden");
   document.getElementById("input-students").disabled = false;
   document.getElementById("input-students").value = "";
   limpiarRelojClase();
@@ -1657,7 +1674,9 @@ function alternarModoAsistencia() {
   }
 
   if (modoAsistenciaActivo) {
-    if (finalizarAsistenciaActual()) aplicarCambioGrupoPendienteSiListo();
+    if (finalizarAsistenciaActual() && cerrarSesionPendienteSiListo()) {
+      aplicarCambioGrupoPendienteSiListo();
+    }
     return;
   }
 
@@ -1830,7 +1849,7 @@ function alternarModoEvaluacion() {
   }
   actualizarControlesEvaluacion();
   mostrarEquipos(equiposActuales);
-  aplicarCambioGrupoPendienteSiListo();
+  if (cerrarSesionPendienteSiListo()) aplicarCambioGrupoPendienteSiListo();
 }
 
 function obtenerResultadoEquipo(numeroEquipo) {
@@ -2320,6 +2339,11 @@ function cargarEvaluacionSesionActual() {
 function cerrarSesionActual() {
   if (!claveSesionEquipos || sesionCerrada) return true;
   if (sesionSoloLectura) return false;
+  if (modoAsistenciaActivo || modoEvaluacionActivo) {
+    sesionCierrePendiente = true;
+    actualizarAvisoCierrePendiente();
+    return false;
+  }
   if (!finalizarAsistenciaActual()) return false;
   if (!guardarRegistroEvaluacion(
     resultadosEquiposActuales,
@@ -2330,13 +2354,24 @@ function cerrarSesionActual() {
 
   sesionCerrada = true;
   sesionCierreIntentada = true;
+  sesionCierrePendiente = false;
   sesionSoloLectura = true;
   modoEvaluacionActivo = false;
+  document.getElementById("session-end-notice").classList.add("hidden");
   actualizarControlesEvaluacion();
   actualizarResumenAsistencia();
   actualizarEstadoEquipos("Sesión cerrada. Los registros anteriores se administran desde el historial.");
   mostrarEquipos(equiposActuales);
   return true;
+}
+
+function cerrarSesionPendienteSiListo() {
+  if (!sesionCierrePendiente) return true;
+  if (modoAsistenciaActivo || modoEvaluacionActivo) {
+    actualizarAvisoCierrePendiente();
+    return false;
+  }
+  return cerrarSesionActual();
 }
 
 function reiniciarResultadosEquiposEvaluacion() {
