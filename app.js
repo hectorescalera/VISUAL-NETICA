@@ -53,9 +53,14 @@ function crearGruposPredeterminados() {
 let gruposConfigurados = crearGruposPredeterminados();
 let grupoActivoKey = null;
 let grupoHorarioAutomaticoKey = null;
+let grupoCambioPendienteKey = null;
+let grupoCambioPendienteManual = false;
 let horaInicioClase = null;
 let horaDesarmeClase = null;
 let horaFinClase = null;
+let sesionCerrada = false;
+let sesionCierreIntentada = false;
+let sesionSoloLectura = false;
 
 let temaActual = "theme-dark";
 let fuenteActual = "font-orbitron";
@@ -81,7 +86,13 @@ const ESTADOS_ASISTENCIA_ANTERIORES = [
 let historialEquipos = [];
 let equiposActuales = [];
 let equiposActualesFijados = false;
+let registroEquiposActualId = null;
 let claveSesionEquipos = null;
+let periodosEscolares = {
+  "period-1": { inicio: "", fin: "" },
+  "period-2": { inicio: "", fin: "" },
+  "period-3": { inicio: "", fin: "" }
+};
 let historialAsistencia = [];
 let asistenciaActual = new Map();
 let asistenciaTomada = false;
@@ -92,6 +103,10 @@ let calificacionesManualesActuales = new Map();
 let ajustesCalificacionActuales = new Map();
 let calificacionMinimaFalta = 0;
 let calificacionMaximaAjustes = 10;
+let calificacionPredeterminadaIndividual = 6;
+let calificacionMinimaEquipo = 8;
+let calificacionMaximaEquipo = 10;
+let calificacionPredeterminadaEquipo = 8;
 let modoEvaluacionActivo = false;
 let temporizadorGuardadoAlumnos = null;
 
@@ -152,17 +167,61 @@ function revisarHorarioAutomatico(ahora = new Date()) {
   grupoHorarioAutomaticoKey = siguienteGrupoHorarioKey;
 
   if (grupoEnHorario) {
-    document.getElementById("group-select").value = grupoEnHorario.id;
-    cambiarGrupo();
+    solicitarCambioGrupo(grupoEnHorario.id, false);
   }
 }
 
 function cambiarGrupo() {
-  if (modoAsistenciaActivo && !finalizarAsistenciaActual()) {
+  solicitarCambioGrupo(document.getElementById("group-select").value, true);
+}
+
+function solicitarCambioGrupo(grupoKey, seleccionManual = false) {
+  if (grupoKey === grupoActivoKey) return;
+  if (modoAsistenciaActivo || modoEvaluacionActivo) {
+    grupoCambioPendienteKey = grupoKey;
+    grupoCambioPendienteManual = seleccionManual;
+    document.getElementById("group-select").value = grupoActivoKey || "";
+    mostrarAvisoCambioGrupoPendiente();
+    return;
+  }
+
+  aplicarCambioGrupo(grupoKey, seleccionManual);
+}
+
+function mostrarAvisoCambioGrupoPendiente() {
+  const grupoPendiente = gruposConfigurados.find(grupo => grupo.id === grupoCambioPendienteKey);
+  const modosActivos = [];
+  if (modoAsistenciaActivo) modosActivos.push("toma de lista");
+  if (modoEvaluacionActivo) modosActivos.push("evaluación de equipos");
+  const aviso = document.getElementById("session-change-notice");
+  aviso.innerText = `El cambio al grupo ${grupoPendiente ? grupoPendiente.nombre : "sin grupo"} está pendiente. Termina y desactiva ${modosActivos.join(" y ")} para aplicarlo; la sesión actual seguirá abierta.`;
+  aviso.classList.remove("hidden");
+}
+
+function aplicarCambioGrupoPendienteSiListo() {
+  if (modoAsistenciaActivo || modoEvaluacionActivo || grupoCambioPendienteKey === null) return;
+  const grupoPendienteKey = grupoCambioPendienteKey;
+  const seleccionPendienteManual = grupoCambioPendienteManual;
+  grupoCambioPendienteKey = null;
+  grupoCambioPendienteManual = false;
+  aplicarCambioGrupo(grupoPendienteKey, seleccionPendienteManual);
+}
+
+function aplicarCambioGrupo(grupoKey, seleccionManual = false) {
+  const claseActualIniciada = horaInicioClase && new Date() >= horaInicioClase;
+  if (claveSesionEquipos && grupoKey !== grupoActivoKey && claseActualIniciada && !sesionSoloLectura && !cerrarSesionActual()) {
     document.getElementById("group-select").value = grupoActivoKey || "";
     return;
   }
+  grupoCambioPendienteKey = null;
+  grupoCambioPendienteManual = false;
+  document.getElementById("session-change-notice").classList.add("hidden");
+  document.getElementById("group-select").value = grupoKey;
   modoEvaluacionActivo = false;
+  sesionCerrada = false;
+  sesionCierreIntentada = false;
+  sesionSoloLectura = false;
+  registroEquiposActualId = null;
 
   const select = document.getElementById("group-select");
   grupoActivoKey = select.value;
@@ -178,7 +237,12 @@ function cambiarGrupo() {
     resultadosEquiposActuales = new Map();
     calificacionesManualesActuales = new Map();
     ajustesCalificacionActuales = new Map();
+    sesionCerrada = false;
+    sesionCierreIntentada = false;
+    sesionSoloLectura = false;
+    registroEquiposActualId = null;
     limpiarRelojClase();
+    document.getElementById("input-students").disabled = false;
     document.getElementById("input-students").value = "";
     mostrarEquipos([]);
     actualizarResumenAsistencia();
@@ -190,17 +254,18 @@ function cambiarGrupo() {
 
   const ahora = new Date();
   const diaClase = DIAS_SEMANA[grupoActivo.dia];
-  let diasHastaClase = (diaClase - ahora.getDay() + 7) % 7;
-  let fechaClase = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate() + diasHastaClase);
+  let diferenciaDias = (diaClase - ahora.getDay() + 7) % 7;
+  const fechaClase = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate() + diferenciaDias);
   horaInicioClase = crearFechaHorario(fechaClase, grupoActivo.inicio);
   horaFinClase = crearFechaHorario(fechaClase, grupoActivo.fin);
 
-  if (diasHastaClase === 0 && ahora >= horaFinClase) {
-    diasHastaClase = 7;
-    fechaClase = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate() + diasHastaClase);
-    horaInicioClase = crearFechaHorario(fechaClase, grupoActivo.inicio);
-    horaFinClase = crearFechaHorario(fechaClase, grupoActivo.fin);
+  if (diferenciaDias === 0 && ahora >= horaFinClase) {
+    diferenciaDias = 7;
+    const fechaSiguiente = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate() + diferenciaDias);
+    horaInicioClase = crearFechaHorario(fechaSiguiente, grupoActivo.inicio);
+    horaFinClase = crearFechaHorario(fechaSiguiente, grupoActivo.fin);
   }
+  sesionSoloLectura = seleccionManual && ahora >= horaFinClase;
 
   document.getElementById("input-students").value = grupoActivo.alumnos.join("\n");
   document.querySelector(".daily-roster").open = true;
@@ -209,6 +274,13 @@ function cambiarGrupo() {
   cargarEquiposSesionActual();
   cargarAsistenciaSesionActual();
   cargarEvaluacionSesionActual();
+  sesionSoloLectura = sesionSoloLectura || sesionCerrada;
+  document.getElementById("input-students").disabled = sesionSoloLectura;
+  if (sesionSoloLectura) {
+    actualizarEstadoEquipos("Horario concluido: solo lectura. Administra sus registros desde el historial.");
+    actualizarResumenAsistencia();
+    actualizarControlesEvaluacion();
+  }
 
   actualizarHoraDesarme();
 
@@ -290,6 +362,10 @@ function evaluarEstadoClase(ahora) {
     progressBar.style.width = "100%";
     progressBar.style.backgroundColor = "var(--alert-red)";
     timeRemainingText.innerText = "Momento de guardar kits y cambiar de grupo";
+    if (!sesionCerrada && !sesionCierreIntentada) {
+      sesionCierreIntentada = true;
+      cerrarSesionActual();
+    }
   }
 }
 
@@ -436,10 +512,20 @@ function cargarHistorialEquipos() {
       throw new Error("El registro guardado no tiene el formato esperado.");
     }
 
-    historialEquipos = registros.filter(esRegistroEquipoValido);
-    if (historialEquipos.length !== registros.length) {
+    const registrosValidos = registros.filter(esRegistroEquipoValido);
+    if (registrosValidos.length !== registros.length) {
       console.error("Se omitieron registros de equipos con datos inválidos.");
     }
+    const revisionesPorClave = new Map();
+    historialEquipos = registrosValidos.map((registro, indice) => {
+      const revision = (revisionesPorClave.get(registro.clave) || 0) + 1;
+      revisionesPorClave.set(registro.clave, revision);
+      return {
+        ...registro,
+        id: registro.id || `legado:${registro.clave}:${indice}`,
+        revision: Number.isInteger(registro.revision) ? registro.revision : revision
+      };
+    });
   } catch (e) {
     console.error("No se pudo cargar el historial de equipos", e);
     alert("No se pudo cargar el historial de equipos guardado en este navegador.");
@@ -463,6 +549,9 @@ function esRegistroEquipoValido(registro) {
     && registro.equipos.every(equipo =>
       Array.isArray(equipo) && equipo.every(alumno => typeof alumno === "string")
     )
+    && (registro.id === undefined || typeof registro.id === "string")
+    && (registro.revision === undefined || (Number.isInteger(registro.revision) && registro.revision > 0))
+    && (registro.evaluacion === undefined || registro.evaluacion === null || esRegistroEvaluacionValido(registro.evaluacion))
     && typeof registro.fijado === "boolean"
     && typeof registro.actualizadoEn === "string";
 }
@@ -477,10 +566,11 @@ function crearClaveSesionEquipos(grupo, fecha) {
 }
 
 function cargarEquiposSesionActual() {
-  const registro = historialEquipos.find(item => item.clave === claveSesionEquipos);
+  const registro = obtenerUltimoRegistroEquipo(claveSesionEquipos);
   const cantidadCoincide = registro && registro.cantidadEquipos === cantidadEquipos;
   equiposActualesFijados = Boolean(registro && registro.fijado && cantidadCoincide);
-  equiposActuales = equiposActualesFijados ? registro.equipos : [];
+  registroEquiposActualId = equiposActualesFijados ? registro.id : null;
+  equiposActuales = equiposActualesFijados ? registro.equipos.map(equipo => [...equipo]) : [];
   mostrarEquipos(equiposActuales);
 
   if (registro && registro.fijado && !cantidadCoincide) {
@@ -494,8 +584,41 @@ function cargarEquiposSesionActual() {
   }
 }
 
+function obtenerUltimoRegistroEquipo(clave) {
+  if (!clave) return null;
+  return historialEquipos
+    .filter(item => item.clave === clave)
+    .sort((a, b) =>
+      b.actualizadoEn.localeCompare(a.actualizadoEn)
+      || (b.revision || 0) - (a.revision || 0)
+    )[0] || null;
+}
+
+function crearIdSnapshotEquipo() {
+  return `${claveSesionEquipos}#${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function desfijarSnapshotActual() {
+  const registro = historialEquipos.find(item => item.id === registroEquiposActualId)
+    || obtenerUltimoRegistroEquipo(claveSesionEquipos);
+  if (!registro || !registro.fijado) return true;
+
+  const registroDesfijado = {
+    ...registro,
+    fijado: false,
+    evaluacion: historialEvaluacion.find(item => item.clave === claveSesionEquipos) || registro.evaluacion || null,
+    actualizadoEn: new Date().toISOString()
+  };
+  if (!guardarRegistroEquipos(registroDesfijado)) return false;
+  equiposActualesFijados = false;
+  registroEquiposActualId = null;
+  return true;
+}
+
 function guardarRegistroEquipos(registro) {
-  const indice = historialEquipos.findIndex(item => item.clave === registro.clave);
+  const indice = registro.id
+    ? historialEquipos.findIndex(item => item.id === registro.id)
+    : historialEquipos.findIndex(item => item.clave === registro.clave);
   const historialAnterior = historialEquipos;
   historialEquipos = [...historialEquipos];
   if (indice === -1) {
@@ -517,13 +640,16 @@ function guardarRegistroEquipos(registro) {
 
 function actualizarEstadoEquipos(mensaje) {
   const estado = document.getElementById("teams-assignment-status");
-  estado.innerText = mensaje;
+  estado.innerText = sesionSoloLectura
+    ? "Horario concluido: solo lectura. Administra sus registros desde el historial."
+    : mensaje;
   estado.classList.toggle("is-pinned", equiposActualesFijados);
+  document.getElementById("btn-random-teams").disabled = !claveSesionEquipos || sesionSoloLectura;
   document.getElementById("btn-fix-teams").disabled =
-    !claveSesionEquipos || equiposActualesFijados || !equiposActuales.some(equipo => equipo.length > 0);
-  const registroSesion = historialEquipos.find(item => item.clave === claveSesionEquipos);
+    !claveSesionEquipos || sesionSoloLectura || equiposActualesFijados || !equiposActuales.some(equipo => equipo.length > 0);
+  const registroSesion = obtenerUltimoRegistroEquipo(claveSesionEquipos);
   document.getElementById("btn-reset-teams").disabled =
-    !claveSesionEquipos
+    !claveSesionEquipos || sesionSoloLectura
     || (!equiposActualesFijados && !equiposActuales.some(equipo => equipo.length > 0)
       && !(registroSesion && registroSesion.fijado));
 }
@@ -542,9 +668,7 @@ function mostrarEquipos(equipos) {
     const titleText = document.createElement("span");
     titleText.innerText = `Equipo ${n}`;
     title.appendChild(titleText);
-    if (modoEvaluacionActivo) {
-      title.appendChild(crearControlResultadoEquipo(n));
-    }
+    title.appendChild(crearControlResultadoEquipo(n));
 
     const list = document.createElement("ul");
     list.className = "team-members-list";
@@ -574,6 +698,10 @@ function mostrarEquipos(equipos) {
 }
 
 function fijarEquiposActuales() {
+  if (sesionSoloLectura) {
+    alert("Este horario ya pasó. Para cambiar este registro, edítalo desde el historial de equipos.");
+    return;
+  }
   const grupo = gruposConfigurados.find(item => item.id === grupoActivoKey);
   if (!grupo || !claveSesionEquipos || !horaInicioClase) {
     alert("Selecciona un grupo antes de fijar los equipos.");
@@ -587,7 +715,11 @@ function fijarEquiposActuales() {
 
   const fecha = claveSesionEquipos.slice(claveSesionEquipos.lastIndexOf("|") + 1);
   const registro = {
+    id: crearIdSnapshotEquipo(),
     clave: claveSesionEquipos,
+    revision: historialEquipos
+      .filter(item => item.clave === claveSesionEquipos)
+      .reduce((maxima, item) => Math.max(maxima, Number(item.revision) || 0), 0) + 1,
     grupoId: grupo.id,
     grupoNombre: grupo.nombre,
     dia: grupo.dia,
@@ -602,22 +734,37 @@ function fijarEquiposActuales() {
 
   if (!guardarRegistroEquipos(registro)) return;
   equiposActualesFijados = true;
+  registroEquiposActualId = registro.id;
   actualizarEstadoEquipos("Equipos fijados para esta sesión y guardados en el historial.");
   renderizarHistorialEquipos();
 }
 
 function reiniciarEquiposSesion() {
+  if (sesionSoloLectura) {
+    alert("Este horario ya pasó. Administra sus registros desde el historial de equipos.");
+    return;
+  }
   if (!claveSesionEquipos) return;
 
-  const registro = historialEquipos.find(item => item.clave === claveSesionEquipos);
+  const registro = obtenerUltimoRegistroEquipo(claveSesionEquipos);
   if (registro && registro.fijado) {
-    const registroReiniciado = { ...registro, fijado: false };
+    const registroReiniciado = {
+      ...registro,
+      fijado: false,
+      evaluacion: historialEvaluacion.find(item => item.clave === claveSesionEquipos) || registro.evaluacion || null
+    };
     if (!guardarRegistroEquipos(registroReiniciado)) return;
+    equiposActualesFijados = false;
+    registroEquiposActualId = null;
   }
 
-  if (!reiniciarResultadosEquiposEvaluacion()) return;
+  if (!reiniciarResultadosEquiposEvaluacion()) {
+    actualizarEstadoEquipos("La combinación anterior se conservó en el historial, pero no se pudo reiniciar la evaluación.");
+    return;
+  }
   equiposActuales = [];
   equiposActualesFijados = false;
+  registroEquiposActualId = null;
   mostrarEquipos([]);
   guardarSnapshotEvaluacionSiExiste();
   actualizarEstadoEquipos(
@@ -629,6 +776,7 @@ function reiniciarEquiposSesion() {
 }
 
 function abrirHistorialEquipos() {
+  prepararFiltrosHistorialEquipos();
   renderizarHistorialEquipos();
   document.getElementById("team-history-modal").classList.remove("hidden");
 }
@@ -638,8 +786,12 @@ function cerrarHistorialEquipos() {
 }
 
 function abrirConfiguracionCalificaciones() {
-  document.getElementById("select-minimum-grade").value = String(calificacionMinimaFalta);
-  document.getElementById("select-maximum-grade").value = String(calificacionMaximaAjustes);
+  document.getElementById("input-individual-minimum-grade").value = String(calificacionMinimaFalta);
+  document.getElementById("input-individual-maximum-grade").value = String(calificacionMaximaAjustes);
+  document.getElementById("input-individual-default-grade").value = String(calificacionPredeterminadaIndividual);
+  document.getElementById("input-team-minimum-grade").value = String(calificacionMinimaEquipo);
+  document.getElementById("input-team-maximum-grade").value = String(calificacionMaximaEquipo);
+  document.getElementById("input-team-default-grade").value = String(calificacionPredeterminadaEquipo);
   document.getElementById("grades-config-modal").classList.remove("hidden");
 }
 
@@ -648,19 +800,53 @@ function cerrarConfiguracionCalificaciones() {
 }
 
 function guardarConfiguracionCalificaciones() {
-  const minima = Number(document.getElementById("select-minimum-grade").value);
-  const maxima = Number(document.getElementById("select-maximum-grade").value);
-  if (![0, 5, 6].includes(minima) || ![8, 9, 10].includes(maxima) || minima > maxima) {
-    alert("La calificación mínima debe ser menor o igual que la máxima.");
+  const minimaIndividual = document.getElementById("input-individual-minimum-grade").valueAsNumber;
+  const maximaIndividual = document.getElementById("input-individual-maximum-grade").valueAsNumber;
+  const predeterminadaIndividual = document.getElementById("input-individual-default-grade").valueAsNumber;
+  const minimaEquipo = document.getElementById("input-team-minimum-grade").valueAsNumber;
+  const maximaEquipo = document.getElementById("input-team-maximum-grade").valueAsNumber;
+  const predeterminadaEquipo = document.getElementById("input-team-default-grade").valueAsNumber;
+  const configuracionValida = [
+    [minimaIndividual, maximaIndividual, predeterminadaIndividual],
+    [minimaEquipo, maximaEquipo, predeterminadaEquipo]
+  ].every(([minima, maxima, predeterminada]) =>
+    Number.isInteger(minima)
+    && Number.isInteger(maxima)
+    && Number.isInteger(predeterminada)
+    && minima >= 0
+    && maxima <= 10
+    && minima <= predeterminada
+    && predeterminada <= maxima
+  );
+  if (!configuracionValida) {
+    alert("Cada calificación debe ser un entero de 0 a 10, y la predeterminada debe quedar entre la mínima y la máxima.");
     return;
   }
-  const minimaAnterior = calificacionMinimaFalta;
-  const maximaAnterior = calificacionMaximaAjustes;
-  calificacionMinimaFalta = minima;
-  calificacionMaximaAjustes = maxima;
-  if (historialEvaluacion.some(item => item.clave === claveSesionEquipos) && !guardarSnapshotEvaluacionSiExiste()) {
-    calificacionMinimaFalta = minimaAnterior;
-    calificacionMaximaAjustes = maximaAnterior;
+  const configuracionAnterior = [
+    calificacionMinimaFalta,
+    calificacionMaximaAjustes,
+    calificacionPredeterminadaIndividual,
+    calificacionMinimaEquipo,
+    calificacionMaximaEquipo,
+    calificacionPredeterminadaEquipo
+  ];
+  calificacionMinimaFalta = minimaIndividual;
+  calificacionMaximaAjustes = maximaIndividual;
+  calificacionPredeterminadaIndividual = predeterminadaIndividual;
+  calificacionMinimaEquipo = minimaEquipo;
+  calificacionMaximaEquipo = maximaEquipo;
+  calificacionPredeterminadaEquipo = predeterminadaEquipo;
+  if (!sesionSoloLectura
+    && historialEvaluacion.some(item => item.clave === claveSesionEquipos)
+    && !guardarSnapshotEvaluacionSiExiste()) {
+    [
+      calificacionMinimaFalta,
+      calificacionMaximaAjustes,
+      calificacionPredeterminadaIndividual,
+      calificacionMinimaEquipo,
+      calificacionMaximaEquipo,
+      calificacionPredeterminadaEquipo
+    ] = configuracionAnterior;
     return;
   }
   guardarEnLocalStorage();
@@ -675,15 +861,25 @@ function renderizarHistorialEquipos() {
   const lista = document.getElementById("team-history-list");
   lista.innerHTML = "";
 
-  const registros = [...historialEquipos].sort((a, b) => {
+  const rango = obtenerRangoFiltroHistorial();
+  const grupoFiltro = document.getElementById("team-history-group-filter").value || "all";
+  const registros = historialEquipos.filter(registro =>
+    (!rango.error && (!rango.desde || registro.fecha >= rango.desde) && (!rango.hasta || registro.fecha <= rango.hasta))
+    && (grupoFiltro === "all" || registro.grupoId === grupoFiltro)
+  ).sort((a, b) => {
     const porFecha = b.fecha.localeCompare(a.fecha);
-    return porFecha || b.actualizadoEn.localeCompare(a.actualizadoEn);
+    return porFecha
+      || b.actualizadoEn.localeCompare(a.actualizadoEn)
+      || (b.revision || 0) - (a.revision || 0);
   });
 
+  const contador = document.getElementById("team-history-count");
+  contador.innerText = `${registros.length} registro${registros.length === 1 ? "" : "s"} visible${registros.length === 1 ? "" : "s"} de ${historialEquipos.length}.`;
   if (registros.length === 0) {
     const vacio = document.createElement("p");
     vacio.className = "team-history-empty";
-    vacio.innerText = "Todavía no hay equipos fijados. Las combinaciones aparecerán aquí al pulsar «Fijar equipos».";
+    vacio.innerText = rango.error
+      || "No hay combinaciones para este filtro. Cambia el periodo o el grupo para consultar otros registros.";
     lista.appendChild(vacio);
     return;
   }
@@ -691,6 +887,7 @@ function renderizarHistorialEquipos() {
   registros.forEach(registro => {
     const detalle = document.createElement("details");
     detalle.className = "team-history-record";
+    const ultimoRegistro = obtenerUltimoRegistroEquipo(registro.clave);
     const registroAsistencia = historialAsistencia.find(item => item.clave === registro.clave);
     const asistenciaCerrada = Boolean(registroAsistencia && registroAsistencia.tomada !== false);
     const estadosAsistencia = new Map(
@@ -707,6 +904,10 @@ function renderizarHistorialEquipos() {
     resumen.className = "team-history-record-header";
     const textoResumen = document.createElement("span");
     textoResumen.innerText = `${registro.grupoNombre} · ${NOMBRES_DIAS[registro.dia] || registro.dia} ${fechaTexto}`;
+    const version = document.createElement("span");
+    const esVersionActual = ultimoRegistro && ultimoRegistro.id === registro.id;
+    version.className = "team-history-version";
+    version.innerText = `${esVersionActual ? (registro.fijado ? "Actual" : "Desfijada") : "Anterior"} · v${registro.revision || 1}`;
     const botonDescarga = document.createElement("button");
     botonDescarga.type = "button";
     botonDescarga.className = "btn-secondary team-history-download";
@@ -717,11 +918,43 @@ function renderizarHistorialEquipos() {
       event.stopPropagation();
       descargarRegistroEquipo(registro);
     });
-    resumen.append(textoResumen, botonDescarga);
+    resumen.append(textoResumen, version, botonDescarga);
+
+    const acciones = document.createElement("div");
+    acciones.className = "team-history-record-actions";
+    const botonEditar = document.createElement("button");
+    botonEditar.type = "button";
+    botonEditar.className = "btn-secondary";
+    botonEditar.innerText = "Editar integrantes";
+    botonEditar.addEventListener("click", event => {
+      event.preventDefault();
+      event.stopPropagation();
+      const editor = detalle.querySelector(".team-history-editor");
+      editor.classList.toggle("hidden");
+    });
+    const botonEliminar = document.createElement("button");
+    botonEliminar.type = "button";
+    botonEliminar.className = "btn-danger";
+    botonEliminar.innerText = "Eliminar registro";
+    botonEliminar.addEventListener("click", event => {
+      event.preventDefault();
+      event.stopPropagation();
+      eliminarRegistroEquipo(registro.id);
+    });
+    acciones.append(botonEditar, botonEliminar);
+
+    const editor = crearEditorRegistroEquipo(registro);
 
     const metadatos = document.createElement("p");
     metadatos.className = "team-history-meta";
-    metadatos.innerText = `${registro.inicio}–${registro.fin} · ${registro.cantidadEquipos} equipos`;
+    const fechaActualizacion = new Date(registro.actualizadoEn).toLocaleString("es-MX", {
+      dateStyle: "short",
+      timeStyle: "short"
+    });
+    const fechaModificacion = registro.modificadoEn
+      ? new Date(registro.modificadoEn).toLocaleString("es-MX", { dateStyle: "short", timeStyle: "short" })
+      : fechaActualizacion;
+    metadatos.innerText = `${registro.inicio}–${registro.fin} · ${registro.cantidadEquipos} equipos · Modificado ${fechaModificacion}`;
 
     const equipos = document.createElement("div");
     equipos.className = "team-history-teams";
@@ -783,15 +1016,241 @@ function renderizarHistorialEquipos() {
       descargarTabla.setAttribute("aria-expanded", String(!visible));
       descargarTabla.innerText = visible ? "Ver hoja de datos" : "Ocultar hoja de datos";
     });
-    detalle.append(resumen, metadatos, equipos, descargarTabla, tabla);
+    detalle.append(resumen, acciones, editor, metadatos, equipos, descargarTabla, tabla);
     lista.appendChild(detalle);
   });
 }
 
+function crearEditorRegistroEquipo(registro) {
+  const editor = document.createElement("section");
+  editor.className = "team-history-editor hidden";
+  const ayuda = document.createElement("p");
+  ayuda.innerText = "Edita la lista de cada equipo, un alumno por línea. Esto modifica solo esta versión del historial.";
+  const grid = document.createElement("div");
+  grid.className = "team-history-edit-grid";
+  const entradas = registro.equipos.map((miembros, indice) => {
+    const etiqueta = document.createElement("label");
+    etiqueta.innerText = `Equipo ${indice + 1}`;
+    const area = document.createElement("textarea");
+    area.value = miembros.join("\n");
+    area.setAttribute("aria-label", `Integrantes del equipo ${indice + 1}`);
+    etiqueta.appendChild(area);
+    grid.appendChild(etiqueta);
+    return area;
+  });
+  const botones = document.createElement("div");
+  botones.className = "team-history-record-actions";
+  const guardar = document.createElement("button");
+  guardar.type = "button";
+  guardar.className = "btn-secondary";
+  guardar.innerText = "Guardar cambios";
+  guardar.addEventListener("click", () => {
+    const equiposEditados = entradas.map(area => parsearListaAlumnos(area.value));
+    const alumnos = equiposEditados.flat();
+    const alumnosNormalizados = alumnos.map(alumno => alumno.trim().toLocaleLowerCase("es-MX"));
+    if (alumnosNormalizados.some(alumno => !alumno) || new Set(alumnosNormalizados).size !== alumnos.length) {
+      alert("Cada alumno debe aparecer una sola vez y tener un nombre válido.");
+      return;
+    }
+
+    if (!window.confirm(`¿Guardar los cambios en la versión ${registro.revision || 1} del historial de ${registro.grupoNombre} del ${registro.fecha}?`)) {
+      return;
+    }
+    const actualizado = {
+      ...registro,
+      equipos: equiposEditados,
+      modificadoEn: new Date().toISOString(),
+      editadoManualmente: true
+    };
+    if (!guardarRegistroEquipos(actualizado)) return;
+    if (claveSesionEquipos === registro.clave && registroEquiposActualId === registro.id) {
+      equiposActuales = equiposEditados.map(equipo => [...equipo]);
+      mostrarEquipos(equiposActuales);
+      actualizarEstadoEquipos("Se actualizó esta versión desde el historial.");
+    }
+    renderizarHistorialEquipos();
+  });
+  const cancelar = document.createElement("button");
+  cancelar.type = "button";
+  cancelar.className = "btn-secondary";
+  cancelar.innerText = "Cancelar";
+  cancelar.addEventListener("click", () => editor.classList.add("hidden"));
+  botones.append(guardar, cancelar);
+  editor.append(ayuda, grid, botones);
+  return editor;
+}
+
+function eliminarRegistroEquipo(id) {
+  const registro = historialEquipos.find(item => item.id === id);
+  if (!registro) return;
+  if (!window.confirm(`¿Eliminar solo la versión ${registro.revision || 1} de ${registro.grupoNombre} del ${registro.fecha}? Esta acción no se puede deshacer.`)) return;
+
+  const historialAnterior = historialEquipos;
+  historialEquipos = historialEquipos.filter(item => item.id !== id);
+  try {
+    localStorage.setItem(CLAVE_REGISTRO_EQUIPOS, JSON.stringify(historialEquipos));
+  } catch (error) {
+    historialEquipos = historialAnterior;
+    console.error("No se pudo eliminar el registro de equipos", error);
+    alert("No se pudo eliminar el registro. Revisa el espacio disponible del navegador.");
+    return;
+  }
+
+  if (claveSesionEquipos === registro.clave && registroEquiposActualId === id) {
+    cargarEquiposSesionActual();
+    actualizarEstadoEquipos("Se eliminó la versión seleccionada del historial.");
+  }
+  renderizarHistorialEquipos();
+}
+
+function prepararFiltrosHistorialEquipos() {
+  const selectorGrupo = document.getElementById("team-history-group-filter");
+  const grupoAnterior = selectorGrupo.value || "all";
+  selectorGrupo.innerHTML = "";
+  const todos = document.createElement("option");
+  todos.value = "all";
+  todos.innerText = "Todos los grupos";
+  selectorGrupo.appendChild(todos);
+  const gruposFiltro = new Map(gruposConfigurados.map(grupo => [grupo.id, grupo.nombre]));
+  historialEquipos.forEach(registro => {
+    if (!gruposFiltro.has(registro.grupoId)) gruposFiltro.set(registro.grupoId, registro.grupoNombre);
+  });
+  gruposFiltro.forEach((nombre, id) => {
+    const opcion = document.createElement("option");
+    opcion.value = id;
+    opcion.innerText = nombre;
+    selectorGrupo.appendChild(opcion);
+  });
+  selectorGrupo.value = gruposFiltro.has(grupoAnterior) ? grupoAnterior : "all";
+  document.getElementById("team-history-period-filter").value = "today";
+  document.getElementById("team-history-date-from").value = "";
+  document.getElementById("team-history-date-to").value = "";
+  Object.entries(periodosEscolares).forEach(([periodo, fechas]) => {
+    document.getElementById(`${periodo}-start`).value = fechas.inicio;
+    document.getElementById(`${periodo}-end`).value = fechas.fin;
+  });
+  actualizarFiltrosHistorialEquipos();
+}
+
+function actualizarFiltrosHistorialEquipos() {
+  const filtro = document.getElementById("team-history-period-filter").value;
+  document.getElementById("team-history-custom-range").classList.toggle("hidden", filtro !== "custom");
+  renderizarHistorialEquipos();
+}
+
+function fechaLocalISO(fecha) {
+  return [
+    fecha.getFullYear(),
+    String(fecha.getMonth() + 1).padStart(2, "0"),
+    String(fecha.getDate()).padStart(2, "0")
+  ].join("-");
+}
+
+function obtenerRangoFiltroHistorial(filtro = document.getElementById("team-history-period-filter").value) {
+  const hoy = new Date();
+  const hoyISO = fechaLocalISO(hoy);
+  if (filtro === "today") return { desde: hoyISO, hasta: hoyISO };
+  if (filtro === "all") return { desde: "", hasta: "" };
+  if (filtro === "week") {
+    const inicio = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() - ((hoy.getDay() + 6) % 7));
+    const fin = new Date(inicio.getFullYear(), inicio.getMonth(), inicio.getDate() + 6);
+    return { desde: fechaLocalISO(inicio), hasta: fechaLocalISO(fin) };
+  }
+  if (filtro === "custom") {
+    const desde = document.getElementById("team-history-date-from").value;
+    const hasta = document.getElementById("team-history-date-to").value;
+    if (!desde && !hasta) return { desde: "", hasta: "", error: "Elige al menos una fecha para consultar el rango." };
+    if (desde && hasta && desde > hasta) return { desde, hasta, error: "La fecha inicial no puede ser posterior a la fecha final." };
+    return { desde, hasta };
+  }
+
+  const periodo = periodosEscolares[filtro];
+  if (!periodo || !periodo.inicio || !periodo.fin) {
+    return { desde: "", hasta: "", error: `Configura las fechas de ${filtro.replace("-", " ")} para consultar sus registros.` };
+  }
+  return { desde: periodo.inicio, hasta: periodo.fin };
+}
+
+function guardarPeriodosEscolares() {
+  const nuevosPeriodos = {};
+  for (let numero = 1; numero <= 3; numero++) {
+    const id = `period-${numero}`;
+    const inicio = document.getElementById(`${id}-start`).value;
+    const fin = document.getElementById(`${id}-end`).value;
+    if (Boolean(inicio) !== Boolean(fin) || (inicio && fin && inicio > fin)) {
+      alert(`Revisa las fechas de Periodo ${numero}: ingresa inicio y fin, y asegúrate de que el inicio no sea posterior al fin.`);
+      return;
+    }
+    nuevosPeriodos[id] = { inicio, fin };
+  }
+  if (!esConfiguracionPeriodosValida(nuevosPeriodos)) {
+    alert("Los periodos escolares no pueden traslaparse. Ajusta sus fechas para evitar registros duplicados al descargar.");
+    return;
+  }
+
+  const periodosAnteriores = periodosEscolares;
+  periodosEscolares = nuevosPeriodos;
+  try {
+    guardarEnLocalStorage();
+  } catch (error) {
+    periodosEscolares = periodosAnteriores;
+    console.error("No se pudieron guardar las fechas de los periodos", error);
+    alert("No se pudieron guardar los periodos escolares en este navegador.");
+    return;
+  }
+  actualizarFiltrosHistorialEquipos();
+  alert("Se guardaron las fechas de los periodos escolares.");
+}
+
+function esConfiguracionPeriodosValida(periodos) {
+  const ids = ["period-1", "period-2", "period-3"];
+  if (!ids.every(id => {
+    const fechas = periodos[id];
+    return fechas
+      && typeof fechas.inicio === "string"
+      && typeof fechas.fin === "string"
+      && (!fechas.inicio || /^\d{4}-\d{2}-\d{2}$/.test(fechas.inicio))
+      && (!fechas.fin || /^\d{4}-\d{2}-\d{2}$/.test(fechas.fin))
+      && Boolean(fechas.inicio) === Boolean(fechas.fin)
+      && (!fechas.inicio || fechas.inicio <= fechas.fin);
+  })) return false;
+
+  const configurados = ids.map(id => periodos[id])
+    .filter(fechas => fechas.inicio && fechas.fin)
+    .sort((a, b) => a.inicio.localeCompare(b.inicio));
+  return configurados.every((fechas, indice) =>
+    indice === 0 || configurados[indice - 1].fin < fechas.inicio
+  );
+}
+
 function filasHistorialEquipo(registro) {
-  const evaluacion = historialEvaluacion.find(item => item.clave === registro.clave);
+  const evaluacion = obtenerEvaluacionSnapshot(registro);
   const asistencia = historialAsistencia.find(item => item.clave === registro.clave);
   const listaCerrada = Boolean(asistencia && asistencia.tomada !== false);
+  const minimaIndividual = evaluacion && Number.isInteger(evaluacion.calificacionMinimaIndividual)
+    ? evaluacion.calificacionMinimaIndividual
+    : evaluacion && Number.isInteger(evaluacion.calificacionMinima)
+      ? evaluacion.calificacionMinima
+      : asistencia && Number.isInteger(asistencia.calificacionMinima)
+        ? asistencia.calificacionMinima
+        : calificacionMinimaFalta;
+  const maximaIndividual = evaluacion && Number.isInteger(evaluacion.calificacionMaximaIndividual)
+    ? evaluacion.calificacionMaximaIndividual
+    : Number.isInteger(evaluacion && evaluacion.calificacionMaxima)
+      ? evaluacion.calificacionMaxima
+      : calificacionMaximaAjustes;
+  const configuracionEquipo = {
+    minima: evaluacion && Number.isInteger(evaluacion.calificacionMinimaEquipo)
+      ? evaluacion.calificacionMinimaEquipo
+      : calificacionMinimaEquipo,
+    maxima: evaluacion && Number.isInteger(evaluacion.calificacionMaximaEquipo)
+      ? evaluacion.calificacionMaximaEquipo
+      : calificacionMaximaEquipo,
+    predeterminada: evaluacion && Number.isInteger(evaluacion.calificacionPredeterminadaEquipo)
+      ? evaluacion.calificacionPredeterminadaEquipo
+      : calificacionPredeterminadaEquipo
+  };
+  const cerrada = Boolean(evaluacion && evaluacion.cerrada);
   const resultados = new Map(
     evaluacion ? evaluacion.resultadosEquipos.map((resultado, indice) => [indice + 1, resultado]) : []
   );
@@ -811,14 +1270,13 @@ function filasHistorialEquipo(registro) {
       ajustes,
       estadosAsistencia: estados,
       asistenciaTomada: listaCerrada,
-      minima: evaluacion && Number.isInteger(evaluacion.calificacionMinima)
-        ? evaluacion.calificacionMinima
-        : asistencia && Number.isInteger(asistencia.calificacionMinima)
-          ? asistencia.calificacionMinima
-          : calificacionMinimaFalta,
-      maxima: evaluacion && Number.isInteger(evaluacion.calificacionMaxima)
-        ? evaluacion.calificacionMaxima
-        : calificacionMaximaAjustes
+      minima: minimaIndividual,
+      maxima: maximaIndividual,
+      predeterminadaIndividual: evaluacion && Number.isInteger(evaluacion.calificacionPredeterminadaIndividual)
+        ? evaluacion.calificacionPredeterminadaIndividual
+        : calificacionPredeterminadaIndividual,
+      ...configuracionEquipo,
+      sesionCerrada: cerrada
     });
     const estado = estados.get(alumno) || "";
     return {
@@ -844,7 +1302,7 @@ function obtenerValorAsistenciaReporte(estado, listaCerrada) {
 }
 
 function filasEquiposHistorial(registro) {
-  const evaluacion = historialEvaluacion.find(item => item.clave === registro.clave);
+  const evaluacion = obtenerEvaluacionSnapshot(registro);
   return registro.equipos.map((miembros, indice) => ({
     Grupo: registro.grupoNombre,
     Fecha: registro.fecha,
@@ -852,8 +1310,29 @@ function filasEquiposHistorial(registro) {
     Resultado: etiquetaResultadoEquipo(
       evaluacion ? evaluacion.resultadosEquipos[indice] || "pendiente" : "pendiente"
     ),
+    "Calificación del equipo": calcularCalificacionEquipo(
+      evaluacion ? evaluacion.resultadosEquipos[indice] || "pendiente" : "pendiente",
+      Boolean(evaluacion && evaluacion.cerrada),
+      evaluacion && Number.isInteger(evaluacion.calificacionMinimaEquipo)
+        ? evaluacion.calificacionMinimaEquipo
+        : calificacionMinimaEquipo,
+      evaluacion && Number.isInteger(evaluacion.calificacionMaximaEquipo)
+        ? evaluacion.calificacionMaximaEquipo
+        : calificacionMaximaEquipo,
+      evaluacion && Number.isInteger(evaluacion.calificacionPredeterminadaEquipo)
+        ? evaluacion.calificacionPredeterminadaEquipo
+        : calificacionPredeterminadaEquipo
+    ) ?? "",
     Integrantes: miembros.join(", ")
   }));
+}
+
+function obtenerEvaluacionSnapshot(registro) {
+  if (registro.evaluacion) return registro.evaluacion;
+  const ultimo = obtenerUltimoRegistroEquipo(registro.clave);
+  return ultimo && ultimo.id === registro.id
+    ? historialEvaluacion.find(item => item.clave === registro.clave)
+    : null;
 }
 
 function crearLibroHistorial(registros) {
@@ -865,11 +1344,12 @@ function crearLibroHistorial(registros) {
     Día: NOMBRES_DIAS[registro.dia] || registro.dia,
     Horario: `${registro.inicio}–${registro.fin}`,
     "Cantidad de equipos": registro.cantidadEquipos,
+    Versión: registro.revision || 1,
     "Fijado": registro.fijado ? "Sí" : "No"
   }));
   const libro = window.XLSX.utils.book_new();
   [
-    { nombre: "Sesiones", filas: filasSesiones, columnas: ["Grupo", "Fecha", "Día", "Horario", "Cantidad de equipos", "Fijado"] },
+    { nombre: "Sesiones", filas: filasSesiones, columnas: ["Grupo", "Fecha", "Día", "Horario", "Cantidad de equipos", "Versión", "Fijado"] },
     { nombre: "Alumnos", filas: filasAlumnos, columnas: ["Grupo", "Fecha", "Día", "Horario", "Equipo", "Nombre", "Asistencia", "Calificación", "Resultado del equipo", "Ajuste"] },
     { nombre: "Equipos", filas: filasEquipos, columnas: ["Grupo", "Fecha", "Equipo", "Resultado", "Integrantes"] }
   ].forEach(({ nombre, filas, columnas }) => {
@@ -889,7 +1369,7 @@ function descargarRegistroEquipo(registro) {
   }
   try {
     const libro = crearLibroHistorial([registro]);
-    window.XLSX.writeFile(libro, `historial-${registro.grupoId}-${registro.fecha}.xlsx`);
+    window.XLSX.writeFile(libro, `historial-${registro.grupoId}-${registro.fecha}-v${registro.revision || 1}.xlsx`);
   } catch (error) {
     console.error("No se pudo exportar el historial del equipo", error);
     alert("No se pudo descargar el historial de este grupo.");
@@ -897,20 +1377,119 @@ function descargarRegistroEquipo(registro) {
 }
 
 function descargarHistorialEquipos() {
+  descargarHistorialPeriodo("all");
+}
+
+function descargarHistorialPeriodo(periodo) {
   if (!window.XLSX) {
     alert("No se pudo cargar el componente de Excel. Revisa tu conexión a internet e inténtalo de nuevo.");
     return;
   }
-  if (historialEquipos.length === 0) {
-    alert("Todavía no hay equipos fijados para descargar.");
+  const rango = periodo === "all" ? null : periodosEscolares[periodo];
+  if (periodo !== "all" && (!rango || !rango.inicio || !rango.fin)) {
+    alert(`Configura las fechas de ${periodo.replace("-", " ")} antes de descargar.`);
     return;
   }
-  try {
-    window.XLSX.writeFile(crearLibroHistorial(historialEquipos), "historial-completo-equipos.xlsx");
-  } catch (error) {
-    console.error("No se pudo exportar el historial completo de equipos", error);
-    alert("No se pudo descargar el historial completo.");
+  const registros = historialEquipos.filter(registro =>
+    !rango || (registro.fecha >= rango.inicio && registro.fecha <= rango.fin)
+  );
+  if (registros.length === 0) {
+    alert("No hay registros de equipos en ese periodo.");
+    return;
   }
+
+  try {
+    const libro = crearLibroHistorial(registros);
+    const nombreArchivo = periodo === "all"
+      ? "historial-completo-equipos.xlsx"
+      : `historial-${periodo}-${rango.inicio}-${rango.fin}.xlsx`;
+    window.XLSX.writeFile(libro, nombreArchivo);
+  } catch (error) {
+    console.error("No se pudo exportar el historial de equipos", error);
+    alert("No se pudo descargar el historial del periodo seleccionado.");
+  }
+}
+
+function reiniciarCicloEscolar() {
+  if (!window.confirm("Se eliminarán los historiales de equipos, asistencia y evaluación, además de las listas de alumnos. Se conservarán los grupos, horarios, colores y calificaciones configuradas. ¿Continuar?")) return;
+  if (!window.confirm("Esta acción es permanente. ¿Confirmas que quieres preparar un nuevo ciclo escolar?")) return;
+
+  const clavesHistorial = [
+    CLAVE_REGISTRO_EQUIPOS,
+    CLAVE_REGISTRO_ASISTENCIA,
+    CLAVE_REGISTRO_EVALUACION
+  ];
+  const almacenamientoAnterior = new Map(
+    [...clavesHistorial, "robotica_config"].map(clave => [clave, localStorage.getItem(clave)])
+  );
+  const estadoAnterior = {
+    equipos: historialEquipos,
+    asistencia: historialAsistencia,
+    evaluacion: historialEvaluacion,
+    grupos: gruposConfigurados,
+    periodos: periodosEscolares
+  };
+
+  try {
+    historialEquipos = [];
+    historialAsistencia = [];
+    historialEvaluacion = [];
+    gruposConfigurados = gruposConfigurados.map(grupo => ({ ...grupo, alumnos: [] }));
+    periodosEscolares = {
+      "period-1": { inicio: "", fin: "" },
+      "period-2": { inicio: "", fin: "" },
+      "period-3": { inicio: "", fin: "" }
+    };
+    clavesHistorial.forEach(clave => localStorage.removeItem(clave));
+    guardarEnLocalStorage();
+  } catch (error) {
+    historialEquipos = estadoAnterior.equipos;
+    historialAsistencia = estadoAnterior.asistencia;
+    historialEvaluacion = estadoAnterior.evaluacion;
+    gruposConfigurados = estadoAnterior.grupos;
+    periodosEscolares = estadoAnterior.periodos;
+    almacenamientoAnterior.forEach((valor, clave) => {
+      if (valor === null) localStorage.removeItem(clave);
+      else localStorage.setItem(clave, valor);
+    });
+    console.error("No se pudo reiniciar el ciclo escolar", error);
+    alert("No se pudo reiniciar el ciclo escolar. No se aplicaron los cambios.");
+    return;
+  }
+
+  asistenciaActual = new Map();
+  asistenciaTomada = false;
+  resultadosEquiposActuales = new Map();
+  calificacionesManualesActuales = new Map();
+  ajustesCalificacionActuales = new Map();
+  equiposActuales = [];
+  equiposActualesFijados = false;
+  registroEquiposActualId = null;
+  sesionCerrada = false;
+  sesionCierreIntentada = false;
+  sesionSoloLectura = false;
+  modoAsistenciaActivo = false;
+  modoEvaluacionActivo = false;
+  grupoCambioPendienteKey = null;
+  grupoCambioPendienteManual = false;
+  grupoHorarioAutomaticoKey = null;
+  grupoActivoKey = null;
+  claveSesionEquipos = null;
+  document.getElementById("group-select").value = "";
+  document.getElementById("session-change-notice").classList.add("hidden");
+  document.getElementById("input-students").disabled = false;
+  document.getElementById("input-students").value = "";
+  limpiarRelojClase();
+  actualizarEquipos(cantidadEquipos, false);
+  mostrarEquipos(equiposActuales);
+  renderizarEditorGrupos();
+  renderizarHistorialEquipos();
+  renderizarHistorialAsistencia();
+  actualizarResumenAsistencia();
+  actualizarControlesEvaluacion();
+  actualizarEstadoEquipos("Ciclo escolar reiniciado. Configura los grupos y alumnos para comenzar.");
+  prepararFiltrosHistorialEquipos();
+  alert("El ciclo escolar quedó reiniciado. Puedes configurar las nuevas listas de alumnos y periodos.");
 }
 
 function crearTablaHistorialAlumnos(alumnos) {
@@ -927,9 +1506,53 @@ function crearTablaHistorialAlumnos(alumnos) {
     "Resultado del equipo",
     "Ajuste"
   ];
+  let columnaOrdenada = null;
+  let direccionOrden = 1;
   columnas.forEach(titulo => {
     const celda = document.createElement("th");
-    celda.innerText = titulo;
+    celda.setAttribute("aria-sort", "none");
+    const botonOrden = document.createElement("button");
+    botonOrden.type = "button";
+    botonOrden.className = "team-history-sort";
+    botonOrden.innerText = `${titulo} ↕`;
+    botonOrden.setAttribute("aria-label", `Ordenar por ${titulo}`);
+    botonOrden.addEventListener("click", () => {
+      if (columnaOrdenada === titulo) {
+        direccionOrden *= -1;
+      } else {
+        columnaOrdenada = titulo;
+        direccionOrden = 1;
+      }
+
+      columnas.forEach((columna, indice) => {
+        const encabezadoColumna = encabezado.cells[indice];
+        const estaOrdenada = columna === columnaOrdenada;
+        encabezadoColumna.setAttribute(
+          "aria-sort",
+          estaOrdenada ? (direccionOrden === 1 ? "ascending" : "descending") : "none"
+        );
+        const boton = encabezadoColumna.querySelector("button");
+        boton.innerText = `${columna} ${estaOrdenada ? (direccionOrden === 1 ? "↑" : "↓") : "↕"}`;
+        boton.setAttribute("aria-label", `Ordenar por ${columna}${estaOrdenada ? (direccionOrden === 1 ? " ascendente" : " descendente") : ""}`);
+      });
+
+      const filas = Array.from(cuerpo.rows);
+      const comparadorTexto = new Intl.Collator("es-MX", { numeric: true, sensitivity: "base" });
+      filas.sort((filaA, filaB) => {
+        const valorA = filaA.cells[columnas.indexOf(titulo)].innerText.trim();
+        const valorB = filaB.cells[columnas.indexOf(titulo)].innerText.trim();
+        const vacioA = valorA === "" || valorA === "—";
+        const vacioB = valorB === "" || valorB === "—";
+        if (vacioA !== vacioB) return vacioA ? 1 : -1;
+
+        const comparacion = titulo === "Calificación"
+          ? Number(valorA) - Number(valorB)
+          : comparadorTexto.compare(valorA, valorB);
+        return comparacion * direccionOrden;
+      });
+      filas.forEach(fila => cuerpo.appendChild(fila));
+    });
+    celda.appendChild(botonOrden);
     encabezado.appendChild(celda);
   });
   const cuerpo = tabla.createTBody();
@@ -947,13 +1570,17 @@ function crearTablaHistorialAlumnos(alumnos) {
 }
 
 function alternarModoAsistencia() {
+  if (sesionSoloLectura) {
+    alert("Este horario ya pasó. Administra sus registros desde el historial de equipos.");
+    return;
+  }
   if (!claveSesionEquipos) {
     alert("Selecciona un grupo antes de tomar asistencia.");
     return;
   }
 
   if (modoAsistenciaActivo) {
-    finalizarAsistenciaActual();
+    if (finalizarAsistenciaActual()) aplicarCambioGrupoPendienteSiListo();
     return;
   }
 
@@ -1025,7 +1652,7 @@ function esRegistroAsistenciaValido(registro) {
       && estadosValidos.includes(marca.estado)
     )
     && (registro.tomada === undefined || typeof registro.tomada === "boolean")
-    && (registro.calificacionMinima === undefined || [0, 5, 6].includes(registro.calificacionMinima))
+    && (registro.calificacionMinima === undefined || (Number.isInteger(registro.calificacionMinima) && registro.calificacionMinima >= 0 && registro.calificacionMinima <= 10))
     && typeof registro.actualizadoEn === "string";
 }
 
@@ -1088,7 +1715,9 @@ function crearMarcaAsistencia(alumno) {
 
 function actualizarControlesEvaluacion() {
   const boton = document.getElementById("btn-evaluation-mode");
-  boton.disabled = !claveSesionEquipos;
+  const botonCerrarSesion = document.getElementById("btn-close-session");
+  boton.disabled = !claveSesionEquipos || sesionSoloLectura;
+  botonCerrarSesion.disabled = !claveSesionEquipos || sesionSoloLectura || sesionCerrada;
   boton.classList.toggle("is-active", modoEvaluacionActivo);
   boton.setAttribute("aria-pressed", String(modoEvaluacionActivo));
   boton.title = modoEvaluacionActivo
@@ -1098,6 +1727,10 @@ function actualizarControlesEvaluacion() {
 }
 
 function alternarModoEvaluacion() {
+  if (sesionSoloLectura) {
+    alert("Este horario ya pasó. Administra sus registros desde el historial de equipos.");
+    return;
+  }
   if (!claveSesionEquipos) {
     alert("Selecciona un grupo antes de evaluar.");
     return;
@@ -1120,10 +1753,27 @@ function alternarModoEvaluacion() {
   }
   actualizarControlesEvaluacion();
   mostrarEquipos(equiposActuales);
+  aplicarCambioGrupoPendienteSiListo();
 }
 
 function obtenerResultadoEquipo(numeroEquipo) {
   return resultadosEquiposActuales.get(numeroEquipo) || "pendiente";
+}
+
+function calcularCalificacionEquipo(resultado, cerrada, minima, maxima, predeterminada) {
+  if (resultado === "terminado") return maxima;
+  if (resultado === "no_terminado") return minima;
+  return cerrada ? predeterminada : null;
+}
+
+function obtenerCalificacionEquipo(numeroEquipo) {
+  return calcularCalificacionEquipo(
+    obtenerResultadoEquipo(numeroEquipo),
+    sesionCerrada,
+    calificacionMinimaEquipo,
+    calificacionMaximaEquipo,
+    calificacionPredeterminadaEquipo
+  );
 }
 
 function crearControlResultadoEquipo(numeroEquipo) {
@@ -1131,8 +1781,10 @@ function crearControlResultadoEquipo(numeroEquipo) {
   if (!modoEvaluacionActivo) {
     const indicador = document.createElement("span");
     indicador.className = `team-result-indicator team-result-${resultado}`;
-    indicador.innerText = resultado === "terminado" ? "✓" : resultado === "no_terminado" ? "×" : "○";
-    indicador.title = `Equipo ${numeroEquipo}: ${etiquetaResultadoEquipo(resultado)}`;
+    const nota = obtenerCalificacionEquipo(numeroEquipo);
+    const marca = resultado === "terminado" ? "✓" : resultado === "no_terminado" ? "×" : "○";
+    indicador.innerText = nota === null ? marca : `${marca} ${nota}`;
+    indicador.title = `Equipo ${numeroEquipo}: ${etiquetaResultadoEquipo(resultado)}${nota === null ? "" : ` · calificación ${nota}`}`;
     indicador.setAttribute("aria-label", indicador.title);
     return indicador;
   }
@@ -1196,15 +1848,15 @@ function crearControlCalificacion(alumno, numeroEquipo) {
   const input = document.createElement("input");
   input.type = "number";
   input.className = `grade-input grade-indicator-${calificacion.tipo}`;
-  input.min = "0";
-  input.max = "10";
+  input.min = String(calificacionMinimaFalta);
+  input.max = String(calificacionMaximaAjustes);
   input.step = "1";
   input.value = calificacion.nota === null ? "" : String(calificacion.nota);
   input.placeholder = "—";
   input.title = calificacion.manual
     ? `Calificación manual de ${alumno}`
-    : "Calificación automática; escribe un entero de 0 a 10 para reemplazarla";
-  input.setAttribute("aria-label", `Calificación de ${alumno}, entero de 0 a 10`);
+    : `Calificación automática; escribe un entero entre ${calificacionMinimaFalta} y ${calificacionMaximaAjustes} para reemplazarla`;
+  input.setAttribute("aria-label", `Calificación de ${alumno}, entero de ${calificacionMinimaFalta} a ${calificacionMaximaAjustes}`);
   let cambioManual = false;
   input.addEventListener("input", () => {
     input.setCustomValidity("");
@@ -1267,7 +1919,12 @@ function obtenerCalificacionAlumno(alumno, numeroEquipo) {
     estadosAsistencia: asistenciaActual,
     asistenciaTomada,
     minima: calificacionMinimaFalta,
-    maxima: calificacionMaximaAjustes
+    maxima: calificacionMaximaAjustes,
+    predeterminadaIndividual: calificacionPredeterminadaIndividual,
+    minimaEquipo: calificacionMinimaEquipo,
+    maximaEquipo: calificacionMaximaEquipo,
+    predeterminadaEquipo: calificacionPredeterminadaEquipo,
+    sesionCerrada
   });
 }
 
@@ -1280,7 +1937,12 @@ function calcularCalificacion({
   estadosAsistencia,
   asistenciaTomada: listaCerrada,
   minima,
-  maxima
+  maxima,
+  predeterminadaIndividual = 6,
+  minimaEquipo = 8,
+  maximaEquipo = 10,
+  predeterminadaEquipo = 8,
+  sesionCerrada: estaCerrada = false
 }) {
   if (notasManuales.has(alumno)) {
     return { nota: notasManuales.get(alumno), manual: true, tipo: "manual", falta: false, base: null };
@@ -1291,14 +1953,23 @@ function calcularCalificacion({
   if (falta) return { nota: minima, manual: false, tipo: "automatica", falta: true, base: minima };
 
   const resultado = resultados.get(numeroEquipo) || "pendiente";
-  const base = resultado === "terminado" ? 10 : resultado === "no_terminado" ? 8 : null;
+  const baseEquipo = calcularCalificacionEquipo(
+    resultado,
+    estaCerrada,
+    minimaEquipo,
+    maximaEquipo,
+    predeterminadaEquipo
+  );
+  const base = resultado === "pendiente" && estaCerrada
+    ? predeterminadaIndividual
+    : baseEquipo;
   if (base === null) return { nota: null, manual: false, tipo: "pendiente", falta: false, base: null };
   const nota = Math.min(maxima, Math.max(minima, base + (ajustes.get(alumno) || 0)));
   return { nota, manual: false, tipo: "automatica", falta: false, base };
 }
 
 function ajustarCalificacion(alumno, cantidad) {
-  if (!modoEvaluacionActivo || !claveSesionEquipos) return;
+  if (!modoEvaluacionActivo || !claveSesionEquipos || sesionSoloLectura) return;
   const equipo = equiposActuales.findIndex(miembros => miembros.includes(alumno));
   if (equipo < 0) return;
   const calificacion = obtenerCalificacionAlumno(alumno, equipo + 1);
@@ -1316,7 +1987,7 @@ function ajustarCalificacion(alumno, cantidad) {
 }
 
 function guardarResultadoEquipo(numeroEquipo, resultado) {
-  if (!modoEvaluacionActivo || !claveSesionEquipos) return;
+  if (!modoEvaluacionActivo || !claveSesionEquipos || sesionSoloLectura) return;
   if (!ESTADOS_EQUIPO_EVALUACION.includes(resultado)) return;
 
   const resultadosNuevos = new Map(resultadosEquiposActuales);
@@ -1329,15 +2000,15 @@ function guardarResultadoEquipo(numeroEquipo, resultado) {
 }
 
 function guardarCalificacionManual(alumno, input) {
-  if (!modoEvaluacionActivo || !claveSesionEquipos) return;
+  if (!modoEvaluacionActivo || !claveSesionEquipos || sesionSoloLectura) return;
 
   const calificacionesNuevas = new Map(calificacionesManualesActuales);
   if (input === null || input.value.trim() === "") {
     calificacionesNuevas.delete(alumno);
   } else {
     const nota = input.valueAsNumber;
-    if (!Number.isInteger(nota) || nota < 0 || nota > 10) {
-      input.setCustomValidity("Ingresa una calificación entera entre 0 y 10.");
+    if (!Number.isInteger(nota) || nota < calificacionMinimaFalta || nota > calificacionMaximaAjustes) {
+      input.setCustomValidity(`Ingresa una calificación entera entre ${calificacionMinimaFalta} y ${calificacionMaximaAjustes}.`);
       input.reportValidity();
       return;
     }
@@ -1349,7 +2020,12 @@ function guardarCalificacionManual(alumno, input) {
   mostrarEquipos(equiposActuales);
 }
 
-function crearRegistroEvaluacion(resultados, calificaciones, ajustes = ajustesCalificacionActuales) {
+function crearRegistroEvaluacion(
+  resultados,
+  calificaciones,
+  ajustes = ajustesCalificacionActuales,
+  cerrada = sesionCerrada
+) {
   const grupo = gruposConfigurados.find(item => item.id === grupoActivoKey);
   if (!grupo || !claveSesionEquipos) return null;
 
@@ -1375,12 +2051,24 @@ function crearRegistroEvaluacion(resultados, calificaciones, ajustes = ajustesCa
     ajustes: Array.from(ajustes, ([alumno, ajuste]) => ({ alumno, ajuste })),
     calificacionMinima: calificacionMinimaFalta,
     calificacionMaxima: calificacionMaximaAjustes,
+    calificacionMinimaIndividual: calificacionMinimaFalta,
+    calificacionMaximaIndividual: calificacionMaximaAjustes,
+    calificacionPredeterminadaIndividual,
+    calificacionMinimaEquipo,
+    calificacionMaximaEquipo,
+    calificacionPredeterminadaEquipo,
+    cerrada,
     actualizadoEn: new Date().toISOString()
   };
 }
 
-function guardarRegistroEvaluacion(resultados, calificaciones, ajustes = ajustesCalificacionActuales) {
-  const registro = crearRegistroEvaluacion(resultados, calificaciones, ajustes);
+function guardarRegistroEvaluacion(
+  resultados,
+  calificaciones,
+  ajustes = ajustesCalificacionActuales,
+  cerrada = sesionCerrada
+) {
+  const registro = crearRegistroEvaluacion(resultados, calificaciones, ajustes, cerrada);
   if (!registro) return false;
 
   const indice = historialEvaluacion.findIndex(item => item.clave === registro.clave);
@@ -1456,11 +2144,34 @@ function esRegistroEvaluacionValido(registro) {
         && Number.isInteger(ajuste.ajuste)
       )
     ))
-    && (registro.calificacionMinima === undefined || [0, 5, 6].includes(registro.calificacionMinima))
-    && (registro.calificacionMaxima === undefined || [8, 9, 10].includes(registro.calificacionMaxima))
+    && (registro.calificacionMinima === undefined || (Number.isInteger(registro.calificacionMinima) && registro.calificacionMinima >= 0 && registro.calificacionMinima <= 10))
+    && (registro.calificacionMaxima === undefined || (Number.isInteger(registro.calificacionMaxima) && registro.calificacionMaxima >= 0 && registro.calificacionMaxima <= 10))
+    && (registro.calificacionMinimaIndividual === undefined || (Number.isInteger(registro.calificacionMinimaIndividual) && registro.calificacionMinimaIndividual >= 0 && registro.calificacionMinimaIndividual <= 10))
+    && (registro.calificacionMaximaIndividual === undefined || (Number.isInteger(registro.calificacionMaximaIndividual) && registro.calificacionMaximaIndividual >= 0 && registro.calificacionMaximaIndividual <= 10))
+    && (registro.calificacionPredeterminadaIndividual === undefined || (Number.isInteger(registro.calificacionPredeterminadaIndividual) && registro.calificacionPredeterminadaIndividual >= 0 && registro.calificacionPredeterminadaIndividual <= 10))
+    && (registro.calificacionMinimaEquipo === undefined || (Number.isInteger(registro.calificacionMinimaEquipo) && registro.calificacionMinimaEquipo >= 0 && registro.calificacionMinimaEquipo <= 10))
+    && (registro.calificacionMaximaEquipo === undefined || (Number.isInteger(registro.calificacionMaximaEquipo) && registro.calificacionMaximaEquipo >= 0 && registro.calificacionMaximaEquipo <= 10))
+    && (registro.calificacionPredeterminadaEquipo === undefined || (Number.isInteger(registro.calificacionPredeterminadaEquipo) && registro.calificacionPredeterminadaEquipo >= 0 && registro.calificacionPredeterminadaEquipo <= 10))
+    && (registro.cerrada === undefined || typeof registro.cerrada === "boolean")
     && !(Number.isInteger(registro.calificacionMinima)
       && Number.isInteger(registro.calificacionMaxima)
       && registro.calificacionMinima > registro.calificacionMaxima)
+    && !(Number.isInteger(registro.calificacionMinimaIndividual)
+      && Number.isInteger(registro.calificacionMaximaIndividual)
+      && registro.calificacionMinimaIndividual > registro.calificacionMaximaIndividual)
+    && !(Number.isInteger(registro.calificacionMinimaEquipo)
+      && Number.isInteger(registro.calificacionMaximaEquipo)
+      && registro.calificacionMinimaEquipo > registro.calificacionMaximaEquipo)
+    && !(Number.isInteger(registro.calificacionMinimaIndividual)
+      && Number.isInteger(registro.calificacionMaximaIndividual)
+      && Number.isInteger(registro.calificacionPredeterminadaIndividual)
+      && (registro.calificacionPredeterminadaIndividual < registro.calificacionMinimaIndividual
+        || registro.calificacionPredeterminadaIndividual > registro.calificacionMaximaIndividual))
+    && !(Number.isInteger(registro.calificacionMinimaEquipo)
+      && Number.isInteger(registro.calificacionMaximaEquipo)
+      && Number.isInteger(registro.calificacionPredeterminadaEquipo)
+      && (registro.calificacionPredeterminadaEquipo < registro.calificacionMinimaEquipo
+        || registro.calificacionPredeterminadaEquipo > registro.calificacionMaximaEquipo))
     && typeof registro.actualizadoEn === "string";
 }
 
@@ -1488,12 +2199,36 @@ function cargarEvaluacionSesionActual() {
       ? registro.ajustes.map(item => [item.alumno, item.ajuste])
       : []
   );
+  sesionCerrada = Boolean(registro && registro.cerrada);
+  sesionCierreIntentada = sesionCerrada;
   modoEvaluacionActivo = false;
   actualizarControlesEvaluacion();
   mostrarEquipos(equiposActuales);
   if (equiposRestaurados && !equiposActualesFijados) {
     actualizarEstadoEquipos("Equipos de esta evaluación restaurados. Fíjalos si quieres conservarlos en el historial de equipos.");
   }
+}
+
+function cerrarSesionActual() {
+  if (!claveSesionEquipos || sesionCerrada) return true;
+  if (sesionSoloLectura) return false;
+  if (!finalizarAsistenciaActual()) return false;
+  if (!guardarRegistroEvaluacion(
+    resultadosEquiposActuales,
+    calificacionesManualesActuales,
+    ajustesCalificacionActuales,
+    true
+  )) return false;
+
+  sesionCerrada = true;
+  sesionCierreIntentada = true;
+  sesionSoloLectura = true;
+  modoEvaluacionActivo = false;
+  actualizarControlesEvaluacion();
+  actualizarResumenAsistencia();
+  actualizarEstadoEquipos("Sesión cerrada. Los registros anteriores se administran desde el historial.");
+  mostrarEquipos(equiposActuales);
+  return true;
 }
 
 function reiniciarResultadosEquiposEvaluacion() {
@@ -1539,7 +2274,7 @@ function formatearResumenAsistencia(conteo) {
 function actualizarResumenAsistencia() {
   const resumen = document.getElementById("attendance-summary");
   const boton = document.getElementById("btn-attendance-mode");
-  boton.disabled = !claveSesionEquipos;
+  boton.disabled = !claveSesionEquipos || sesionSoloLectura;
   boton.classList.toggle("is-active", modoAsistenciaActivo);
   boton.setAttribute("aria-pressed", String(modoAsistenciaActivo));
   boton.title = modoAsistenciaActivo ? "Finalizar toma de asistencia" : "Activar toma de asistencia";
@@ -1588,9 +2323,14 @@ function crearRegistroAsistencia(estados, tomada) {
 }
 
 function finalizarAsistenciaActual() {
-  const registro = crearRegistroAsistencia(asistenciaActual, true);
+  const estadosFinales = new Map(asistenciaActual);
+  parsearListaAlumnos(document.getElementById("input-students").value).forEach(alumno => {
+    if (!estadosFinales.has(alumno)) estadosFinales.set(alumno, "presente");
+  });
+  const registro = crearRegistroAsistencia(estadosFinales, true);
   if (!registro || !guardarRegistroAsistencia(registro)) return false;
 
+  asistenciaActual = estadosFinales;
   asistenciaTomada = true;
   modoAsistenciaActivo = false;
   actualizarResumenAsistencia();
@@ -1600,7 +2340,7 @@ function finalizarAsistenciaActual() {
 }
 
 function guardarEstadoAsistencia(alumno, valor) {
-  if (!modoAsistenciaActivo || !claveSesionEquipos) return;
+  if (!modoAsistenciaActivo || !claveSesionEquipos || sesionSoloLectura) return;
   if (!ESTADOS_ASISTENCIA.some(estado => estado.valor === valor)) return;
 
   const nuevosEstados = new Map(asistenciaActual);
@@ -1722,6 +2462,7 @@ function renderizarHistorialAsistencia() {
 
 // GUARDADO DE LA LISTA DE ALUMNOS DEL GRUPO ACTIVO
 function guardarAlumnosDelGrupoActivo() {
+  if (sesionSoloLectura) return;
   const grupo = gruposConfigurados.find(g => g.id === grupoActivoKey);
   if (!grupo) return;
   grupo.alumnos = parsearListaAlumnos(document.getElementById("input-students").value);
@@ -1741,6 +2482,10 @@ function guardarAlumnosDelGrupoActivo() {
 }
 
 function generarEquiposAleatorios() {
+  if (sesionSoloLectura) {
+    alert("Este horario ya pasó. Para cambiar este registro, edítalo desde el historial de equipos.");
+    return;
+  }
   if (!grupoActivoKey || !claveSesionEquipos) {
     alert("Selecciona un grupo antes de sortear los equipos.");
     return;
@@ -1759,6 +2504,7 @@ function generarEquiposAleatorios() {
     [alumnos[i], alumnos[j]] = [alumnos[j], alumnos[i]];
   }
 
+  if (equiposActualesFijados && !desfijarSnapshotActual()) return;
   if (!reiniciarResultadosEquiposEvaluacion()) return;
   const equipos = Array.from({ length: cantidadEquipos }, () => []);
   alumnos.forEach((alumno, index) => equipos[index % cantidadEquipos].push(alumno));
@@ -2343,6 +3089,13 @@ function guardarEnLocalStorage() {
     disassembleMinutes: minutosAntesDesarme,
     minimumAbsenceGrade: calificacionMinimaFalta,
     maximumAdjustmentGrade: calificacionMaximaAjustes,
+    individualMinimumGrade: calificacionMinimaFalta,
+    individualMaximumGrade: calificacionMaximaAjustes,
+    individualDefaultGrade: calificacionPredeterminadaIndividual,
+    teamMinimumGrade: calificacionMinimaEquipo,
+    teamMaximumGrade: calificacionMaximaEquipo,
+    teamDefaultGrade: calificacionPredeterminadaEquipo,
+    schoolPeriods: periodosEscolares,
     theme: temaActual,
     font: fuenteActual
   };
@@ -2395,11 +3148,48 @@ function cargarConfiguracionGuardada() {
         minutosAntesDesarme = config.disassembleMinutes;
       }
       document.getElementById("input-disassemble-minutes").value = minutosAntesDesarme;
-      if ([0, 5, 6].includes(config.minimumAbsenceGrade)) {
+      if (Number.isInteger(config.individualMinimumGrade)
+        && config.individualMinimumGrade >= 0
+        && config.individualMinimumGrade <= 10) {
+        calificacionMinimaFalta = config.individualMinimumGrade;
+      } else if (Number.isInteger(config.minimumAbsenceGrade)
+        && config.minimumAbsenceGrade >= 0
+        && config.minimumAbsenceGrade <= 10) {
         calificacionMinimaFalta = config.minimumAbsenceGrade;
       }
-      if ([8, 9, 10].includes(config.maximumAdjustmentGrade)) {
+      if (Number.isInteger(config.individualMaximumGrade)
+        && config.individualMaximumGrade >= 0
+        && config.individualMaximumGrade <= 10) {
+        calificacionMaximaAjustes = config.individualMaximumGrade;
+      } else if (Number.isInteger(config.maximumAdjustmentGrade)
+        && config.maximumAdjustmentGrade >= 0
+        && config.maximumAdjustmentGrade <= 10) {
         calificacionMaximaAjustes = config.maximumAdjustmentGrade;
+      }
+      if (Number.isInteger(config.individualDefaultGrade)
+        && config.individualDefaultGrade >= 0
+        && config.individualDefaultGrade <= 10) {
+        calificacionPredeterminadaIndividual = config.individualDefaultGrade;
+      }
+      if (Number.isInteger(config.teamMinimumGrade)
+        && config.teamMinimumGrade >= 0
+        && config.teamMinimumGrade <= 10) {
+        calificacionMinimaEquipo = config.teamMinimumGrade;
+      }
+      if (Number.isInteger(config.teamMaximumGrade)
+        && config.teamMaximumGrade >= 0
+        && config.teamMaximumGrade <= 10) {
+        calificacionMaximaEquipo = config.teamMaximumGrade;
+      }
+      if (Number.isInteger(config.teamDefaultGrade)
+        && config.teamDefaultGrade >= 0
+        && config.teamDefaultGrade <= 10) {
+        calificacionPredeterminadaEquipo = config.teamDefaultGrade;
+      }
+      if (config.schoolPeriods && esConfiguracionPeriodosValida(config.schoolPeriods)) {
+        periodosEscolares = config.schoolPeriods;
+      } else if (config.schoolPeriods) {
+        console.error("Se ignoraron las fechas de periodos escolares guardadas porque son inválidas.");
       }
       actualizarHoraDesarme();
       

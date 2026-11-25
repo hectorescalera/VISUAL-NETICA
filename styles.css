@@ -250,6 +250,18 @@ select {
   min-height: 0;
 }
 
+.session-change-notice {
+  flex: 0 0 auto;
+  margin-bottom: 8px;
+  padding: 9px 14px;
+  border: 1px solid var(--alert-orange);
+  border-radius: 8px;
+  background: rgba(249, 115, 22, 0.14);
+  color: var(--text-main);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
 /* GRID SUPERIOR */
 .top-content-grid {
   display: grid;
@@ -793,7 +805,7 @@ body.theme-christmas .christmas-lights {
 .team-result-indicator,
 .team-result-button {
   display: inline-flex;
-  width: 16px;
+  min-width: 16px;
   height: 16px;
   align-items: center;
   justify-content: center;
@@ -804,6 +816,11 @@ body.theme-christmas .christmas-lights {
   font-size: 0.68rem;
   font-weight: 800;
   line-height: 1;
+  white-space: nowrap;
+}
+
+.team-result-indicator {
+  padding: 0 3px;
 }
 
 .team-result-indicator,
@@ -1516,7 +1533,26 @@ body.teams-expanded .session-title {
   font-size: 0.85rem;
 }
 
-.grades-config-content select {
+.grades-config-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  margin-top: 16px;
+}
+
+.grades-config-grid section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.grades-config-grid h3 {
+  margin: 0 0 4px;
+  color: var(--accent-blue);
+  font-size: 0.95rem;
+}
+
+.grades-config-grid input {
   width: 100%;
   padding: 8px;
   border: 1px solid var(--card-border);
@@ -1525,9 +1561,125 @@ body.teams-expanded .session-title {
   color: var(--text-main);
 }
 
+@media (max-width: 560px) {
+  .grades-config-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .team-history-actions {
   display: flex;
-  justify-content: flex-end;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.team-history-filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  align-items: end;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--card-border);
+  border-radius: 7px;
+  background: var(--bg-dark);
+}
+
+.team-history-filters > label,
+.team-history-custom-range {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.team-history-filters select,
+.team-history-custom-range input,
+.team-history-period-grid input,
+.team-history-edit-grid textarea {
+  min-width: 0;
+  padding: 6px;
+  border: 1px solid var(--card-border);
+  border-radius: 5px;
+  background: var(--card-bg);
+  color: var(--text-main);
+}
+
+.team-history-custom-range {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: auto minmax(130px, 1fr) auto minmax(130px, 1fr);
+  align-items: center;
+  gap: 7px;
+}
+
+.team-history-count {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}
+
+.team-history-period-settings {
+  padding: 8px;
+  border: 1px solid var(--card-border);
+  border-radius: 7px;
+}
+
+.team-history-period-settings summary {
+  color: var(--accent-cyan);
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.team-history-period-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 10px 0;
+}
+
+.team-history-period-grid section {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 8px;
+  border: 1px solid var(--card-border);
+  border-radius: 5px;
+}
+
+.team-history-period-grid strong {
+  color: var(--accent-blue);
+}
+
+.team-history-export {
+  position: relative;
+}
+
+.team-history-export > summary {
+  display: inline-block;
+  list-style: none;
+}
+
+.team-history-export-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 7px;
+}
+
+.btn-danger {
+  padding: 6px 9px;
+  border: 1px solid var(--alert-red);
+  border-radius: 5px;
+  background: rgba(239, 68, 68, 0.14);
+  color: var(--text-main);
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.btn-danger:hover {
+  background: rgba(239, 68, 68, 0.28);
 }
 
 .team-history-list {
@@ -1566,6 +1718,52 @@ body.teams-expanded .session-title {
 
 .team-history-download-table {
   margin: 8px 0;
+}
+
+.team-history-record-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0;
+}
+
+.team-history-editor {
+  margin: 8px 0;
+  padding: 9px;
+  border: 1px solid var(--card-border);
+  border-radius: 6px;
+  background: var(--bg-dark);
+}
+
+.team-history-editor > p {
+  margin: 0 0 8px;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}
+
+.team-history-edit-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 8px;
+  margin: 8px 0;
+}
+
+.team-history-edit-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.team-history-edit-grid textarea {
+  min-height: 72px;
+  resize: vertical;
+}
+
+.team-history-version {
+  margin-left: 6px;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  white-space: nowrap;
 }
 
 .team-history-meta {
@@ -1645,6 +1843,35 @@ body.teams-expanded .session-title {
 
 .team-history-table th {
   color: var(--accent-cyan);
+}
+
+.team-history-sort {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.team-history-sort:hover {
+  text-decoration: underline;
+}
+
+.team-history-sort:focus-visible {
+  outline: 2px solid var(--accent-blue);
+  outline-offset: 3px;
+}
+
+@media (max-width: 620px) {
+  .team-history-period-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .team-history-custom-range {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
 }
 
 .team-history-members > p {

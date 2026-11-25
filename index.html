@@ -67,6 +67,8 @@
     </div>
   </header>
 
+  <p class="session-change-notice hidden" id="session-change-notice" role="alert"></p>
+
   <!-- CONTENIDO PRINCIPAL -->
   <main class="dashboard-container" id="main-container">
 
@@ -131,11 +133,12 @@
           <span class="toggle-indicator" id="toggle-arrow">▲ Mostrar Equipos</span>
         </div>
         <div class="teams-header-right" onclick="event.stopPropagation()">
-          <button class="btn-icon-only" onclick="generarEquiposAleatorios()" title="Sortear Equipos">🎲</button>
+          <button class="btn-icon-only" id="btn-random-teams" onclick="generarEquiposAleatorios()" title="Sortear Equipos">🎲</button>
           <button class="btn-icon-only" id="btn-fix-teams" onclick="fijarEquiposActuales()" title="Fijar equipos" aria-label="Fijar equipos" disabled>📌</button>
           <button class="btn-icon-only" id="btn-reset-teams" onclick="reiniciarEquiposSesion()" title="Reiniciar equipos de esta sesión" aria-label="Reiniciar equipos de esta sesión" disabled>↻</button>
           <button class="btn-icon-only" onclick="abrirHistorialEquipos()" title="Historial de equipos" aria-label="Historial de equipos">📚</button>
           <button class="btn-icon-only" onclick="abrirConfiguracionCalificaciones()" title="Configurar calificaciones" aria-label="Configurar calificaciones">⚙️</button>
+          <button class="btn-icon-only" id="btn-close-session" onclick="cerrarSesionActual()" title="Cerrar sesión y completar datos pendientes" aria-label="Cerrar sesión y completar datos pendientes" disabled>⏹️</button>
           <button class="btn-icon-only" id="btn-attendance-mode" onclick="alternarModoAsistencia()" title="Activar toma de asistencia" aria-label="Activar toma de asistencia" aria-pressed="false">🙋</button>
           <button class="btn-icon-only" id="btn-evaluation-mode" onclick="alternarModoEvaluacion()" title="Activar evaluación" aria-label="Activar evaluación" aria-pressed="false" disabled>🏅</button>
           <button class="btn-icon-only" onclick="abrirHistorialAsistencia()" title="Historial de asistencia" aria-label="Historial de asistencia">📅</button>
@@ -264,19 +267,27 @@
   <div class="modal-overlay hidden" id="grades-config-modal" role="dialog" aria-modal="true" aria-labelledby="grades-config-title">
     <div class="modal-content grades-config-content">
       <h2 id="grades-config-title">Configuración de calificaciones</h2>
-      <p>La falta automática usa la nota mínima. Los ajustes +/− se aplican a la nota base del equipo y respetan estos límites. Las notas manuales siguen siendo independientes.</p>
-      <label for="select-minimum-grade">Calificación automática por falta (mínima):</label>
-      <select id="select-minimum-grade">
-        <option value="0">0</option>
-        <option value="5">5</option>
-        <option value="6">6</option>
-      </select>
-      <label for="select-maximum-grade">Calificación máxima para ajustes +/−:</label>
-      <select id="select-maximum-grade">
-        <option value="8">8</option>
-        <option value="9">9</option>
-        <option value="10">10</option>
-      </select>
+      <p>Al cerrar la sesión, los equipos sin resultado reciben la nota predeterminada de equipo y las notas individuales pendientes reciben su nota predeterminada. Las faltas explícitas conservan la mínima individual.</p>
+      <div class="grades-config-grid">
+        <section>
+          <h3>Calificaciones individuales</h3>
+          <label for="input-individual-minimum-grade">Mínima:</label>
+          <input type="number" id="input-individual-minimum-grade" min="0" max="10" step="1">
+          <label for="input-individual-maximum-grade">Máxima:</label>
+          <input type="number" id="input-individual-maximum-grade" min="0" max="10" step="1">
+          <label for="input-individual-default-grade">Predeterminada si queda pendiente:</label>
+          <input type="number" id="input-individual-default-grade" min="0" max="10" step="1">
+        </section>
+        <section>
+          <h3>Calificaciones por equipo</h3>
+          <label for="input-team-minimum-grade">Mínima (no terminado):</label>
+          <input type="number" id="input-team-minimum-grade" min="0" max="10" step="1">
+          <label for="input-team-maximum-grade">Máxima (terminado):</label>
+          <input type="number" id="input-team-maximum-grade" min="0" max="10" step="1">
+          <label for="input-team-default-grade">Predeterminada si queda pendiente:</label>
+          <input type="number" id="input-team-default-grade" min="0" max="10" step="1">
+        </section>
+      </div>
       <div class="modal-actions">
         <button class="btn-save" onclick="guardarConfiguracionCalificaciones()">Guardar</button>
         <button class="btn-close" onclick="cerrarConfiguracionCalificaciones()">Cerrar</button>
@@ -287,9 +298,70 @@
   <div class="modal-overlay hidden" id="team-history-modal" role="dialog" aria-modal="true" aria-labelledby="team-history-title">
     <div class="modal-content team-history-content">
       <h2 id="team-history-title">Historial de equipos fijados</h2>
-      <p>Consulta las combinaciones guardadas por grupo, día y fecha.</p>
+      <p>Consulta las combinaciones guardadas. Los horarios pasados son de solo lectura aquí; usa este historial para administrarlos.</p>
+      <div class="team-history-filters">
+        <label for="team-history-period-filter">Periodo visible:
+          <select id="team-history-period-filter" onchange="actualizarFiltrosHistorialEquipos()">
+            <option value="today">Hoy</option>
+            <option value="week">Esta semana</option>
+            <option value="period-1">Periodo 1</option>
+            <option value="period-2">Periodo 2</option>
+            <option value="period-3">Periodo 3</option>
+            <option value="custom">Rango de fechas</option>
+            <option value="all">Todo el historial</option>
+          </select>
+        </label>
+        <label for="team-history-group-filter">Grupo:
+          <select id="team-history-group-filter" onchange="actualizarFiltrosHistorialEquipos()">
+            <option value="all">Todos los grupos</option>
+          </select>
+        </label>
+        <div class="team-history-custom-range hidden" id="team-history-custom-range">
+          <label for="team-history-date-from">Desde</label>
+          <input type="date" id="team-history-date-from" onchange="actualizarFiltrosHistorialEquipos()">
+          <label for="team-history-date-to">Hasta</label>
+          <input type="date" id="team-history-date-to" onchange="actualizarFiltrosHistorialEquipos()">
+        </div>
+      </div>
+      <p class="team-history-count" id="team-history-count" role="status"></p>
+      <details class="team-history-period-settings">
+        <summary>Configurar fechas de los tres periodos escolares</summary>
+        <div class="team-history-period-grid">
+          <section>
+            <strong>Periodo 1</strong>
+            <label for="period-1-start">Inicio</label>
+            <input type="date" id="period-1-start">
+            <label for="period-1-end">Fin</label>
+            <input type="date" id="period-1-end">
+          </section>
+          <section>
+            <strong>Periodo 2</strong>
+            <label for="period-2-start">Inicio</label>
+            <input type="date" id="period-2-start">
+            <label for="period-2-end">Fin</label>
+            <input type="date" id="period-2-end">
+          </section>
+          <section>
+            <strong>Periodo 3</strong>
+            <label for="period-3-start">Inicio</label>
+            <input type="date" id="period-3-start">
+            <label for="period-3-end">Fin</label>
+            <input type="date" id="period-3-end">
+          </section>
+        </div>
+        <button type="button" class="btn-secondary" onclick="guardarPeriodosEscolares()">Guardar periodos</button>
+      </details>
       <div class="team-history-actions">
-        <button class="btn-secondary" onclick="descargarHistorialEquipos()">Descargar historial completo (.xlsx)</button>
+        <details class="team-history-export">
+          <summary class="btn-secondary">Descargar historial (.xlsx)</summary>
+          <div class="team-history-export-options">
+            <button type="button" class="btn-secondary" onclick="descargarHistorialPeriodo('period-1')">Periodo 1</button>
+            <button type="button" class="btn-secondary" onclick="descargarHistorialPeriodo('period-2')">Periodo 2</button>
+            <button type="button" class="btn-secondary" onclick="descargarHistorialPeriodo('period-3')">Periodo 3</button>
+            <button type="button" class="btn-secondary" onclick="descargarHistorialPeriodo('all')">Todo el ciclo</button>
+          </div>
+        </details>
+        <button type="button" class="btn-danger" onclick="reiniciarCicloEscolar()">Preparar nuevo ciclo</button>
       </div>
       <div class="team-history-list" id="team-history-list"></div>
       <div class="modal-actions">
