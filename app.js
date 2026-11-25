@@ -61,6 +61,8 @@ let horaFinClase = null;
 let sesionCerrada = false;
 let sesionCierreIntentada = false;
 let sesionCierrePendiente = false;
+let sesionCierreMotivoPendiente = null;
+let sesionCierreOrigen = null;
 let sesionSoloLectura = false;
 
 let temaActual = "theme-dark";
@@ -222,7 +224,7 @@ function actualizarAvisoCierrePendiente() {
 
 function aplicarCambioGrupo(grupoKey, seleccionManual = false) {
   const claseActualIniciada = horaInicioClase && new Date() >= horaInicioClase;
-  if (claveSesionEquipos && grupoKey !== grupoActivoKey && claseActualIniciada && !sesionSoloLectura && !cerrarSesionActual()) {
+  if (claveSesionEquipos && grupoKey !== grupoActivoKey && claseActualIniciada && !sesionSoloLectura && !cerrarSesionActual("cambio-grupo")) {
     document.getElementById("group-select").value = grupoActivoKey || "";
     return;
   }
@@ -235,6 +237,8 @@ function aplicarCambioGrupo(grupoKey, seleccionManual = false) {
   sesionCerrada = false;
   sesionCierreIntentada = false;
   sesionCierrePendiente = false;
+  sesionCierreMotivoPendiente = null;
+  sesionCierreOrigen = null;
   sesionSoloLectura = false;
   registroEquiposActualId = null;
 
@@ -255,6 +259,8 @@ function aplicarCambioGrupo(grupoKey, seleccionManual = false) {
     sesionCerrada = false;
     sesionCierreIntentada = false;
     sesionCierrePendiente = false;
+    sesionCierreMotivoPendiente = null;
+    sesionCierreOrigen = null;
     sesionSoloLectura = false;
     registroEquiposActualId = null;
     limpiarRelojClase();
@@ -293,7 +299,7 @@ function aplicarCambioGrupo(grupoKey, seleccionManual = false) {
   sesionSoloLectura = sesionSoloLectura || sesionCerrada;
   document.getElementById("input-students").disabled = sesionSoloLectura;
   if (sesionSoloLectura) {
-    actualizarEstadoEquipos("Horario concluido: solo lectura. Administra sus registros desde el historial.");
+    actualizarEstadoEquipos(mensajeSesionSoloLectura());
     actualizarResumenAsistencia();
     actualizarControlesEvaluacion();
   }
@@ -380,7 +386,7 @@ function evaluarEstadoClase(ahora) {
     timeRemainingText.innerText = "Momento de guardar kits y cambiar de grupo";
     if (!sesionCerrada && !sesionCierreIntentada) {
       sesionCierreIntentada = true;
-      cerrarSesionActual();
+      cerrarSesionActual("horario");
     }
   }
 }
@@ -656,9 +662,7 @@ function guardarRegistroEquipos(registro) {
 
 function actualizarEstadoEquipos(mensaje) {
   const estado = document.getElementById("teams-assignment-status");
-  estado.innerText = sesionSoloLectura
-    ? "Horario concluido: solo lectura. Administra sus registros desde el historial."
-    : mensaje;
+  estado.innerText = sesionSoloLectura ? mensajeSesionSoloLectura() : mensaje;
   estado.classList.toggle("is-pinned", equiposActualesFijados);
   document.getElementById("btn-random-teams").disabled = !claveSesionEquipos || sesionSoloLectura;
   document.getElementById("btn-fix-teams").disabled =
@@ -668,6 +672,16 @@ function actualizarEstadoEquipos(mensaje) {
     !claveSesionEquipos || sesionSoloLectura
     || (!equiposActualesFijados && !equiposActuales.some(equipo => equipo.length > 0)
       && !(registroSesion && registroSesion.fijado));
+}
+
+function mensajeSesionSoloLectura() {
+  if (sesionCierreOrigen === "manual") {
+    return "Sesión cerrada manualmente. Administra sus registros desde el historial.";
+  }
+  if (sesionCierreOrigen === "cambio-grupo") {
+    return "Sesión cerrada al cambiar de grupo. Administra sus registros desde el historial.";
+  }
+  return "Horario concluido: solo lectura. Administra sus registros desde el historial.";
 }
 
 function mostrarEquipos(equipos) {
@@ -1560,6 +1574,8 @@ function reiniciarCicloEscolar() {
   sesionCerrada = false;
   sesionCierreIntentada = false;
   sesionCierrePendiente = false;
+  sesionCierreMotivoPendiente = null;
+  sesionCierreOrigen = null;
   sesionSoloLectura = false;
   modoAsistenciaActivo = false;
   modoEvaluacionActivo = false;
@@ -2151,7 +2167,8 @@ function crearRegistroEvaluacion(
   resultados,
   calificaciones,
   ajustes = ajustesCalificacionActuales,
-  cerrada = sesionCerrada
+  cerrada = sesionCerrada,
+  motivoCierre = cerrada ? sesionCierreOrigen : null
 ) {
   const grupo = gruposConfigurados.find(item => item.id === grupoActivoKey);
   if (!grupo || !claveSesionEquipos) return null;
@@ -2185,6 +2202,7 @@ function crearRegistroEvaluacion(
     calificacionMaximaEquipo,
     calificacionPredeterminadaEquipo,
     cerrada,
+    motivoCierre,
     actualizadoEn: new Date().toISOString()
   };
 }
@@ -2193,9 +2211,10 @@ function guardarRegistroEvaluacion(
   resultados,
   calificaciones,
   ajustes = ajustesCalificacionActuales,
-  cerrada = sesionCerrada
+  cerrada = sesionCerrada,
+  motivoCierre = cerrada ? sesionCierreOrigen : null
 ) {
-  const registro = crearRegistroEvaluacion(resultados, calificaciones, ajustes, cerrada);
+  const registro = crearRegistroEvaluacion(resultados, calificaciones, ajustes, cerrada, motivoCierre);
   if (!registro) return false;
 
   const indice = historialEvaluacion.findIndex(item => item.clave === registro.clave);
@@ -2280,6 +2299,9 @@ function esRegistroEvaluacionValido(registro) {
     && (registro.calificacionMaximaEquipo === undefined || (Number.isInteger(registro.calificacionMaximaEquipo) && registro.calificacionMaximaEquipo >= 0 && registro.calificacionMaximaEquipo <= 10))
     && (registro.calificacionPredeterminadaEquipo === undefined || (Number.isInteger(registro.calificacionPredeterminadaEquipo) && registro.calificacionPredeterminadaEquipo >= 0 && registro.calificacionPredeterminadaEquipo <= 10))
     && (registro.cerrada === undefined || typeof registro.cerrada === "boolean")
+    && (registro.motivoCierre === undefined
+      || registro.motivoCierre === null
+      || ["manual", "horario", "cambio-grupo"].includes(registro.motivoCierre))
     && !(Number.isInteger(registro.calificacionMinima)
       && Number.isInteger(registro.calificacionMaxima)
       && registro.calificacionMinima > registro.calificacionMaxima)
@@ -2305,6 +2327,8 @@ function esRegistroEvaluacionValido(registro) {
 function cargarEvaluacionSesionActual() {
   const registro = historialEvaluacion.find(item => item.clave === claveSesionEquipos);
   const cantidadCoincide = registro && registro.cantidadEquipos === cantidadEquipos;
+  const mantenerCerrada = debeMantenerseCerrada(registro, new Date());
+  const cierreRecuperado = Boolean(registro && registro.cerrada && !mantenerCerrada);
   const equiposRestaurados = !equiposActuales.some(equipo => equipo.length > 0)
     && cantidadCoincide
     && registro.equipos.some(equipo => equipo.length > 0);
@@ -2326,21 +2350,35 @@ function cargarEvaluacionSesionActual() {
       ? registro.ajustes.map(item => [item.alumno, item.ajuste])
       : []
   );
-  sesionCerrada = Boolean(registro && registro.cerrada);
+  sesionCerrada = mantenerCerrada;
+  sesionCierreOrigen = sesionCerrada
+    ? registro.motivoCierre || "cambio-grupo"
+    : null;
   sesionCierreIntentada = sesionCerrada;
+  sesionCierrePendiente = false;
+  sesionCierreMotivoPendiente = null;
   modoEvaluacionActivo = false;
   actualizarControlesEvaluacion();
   mostrarEquipos(equiposActuales);
-  if (equiposRestaurados && !equiposActualesFijados) {
+  if (cierreRecuperado) {
+    actualizarEstadoEquipos("Sesión reanudada dentro del horario. Los registros anteriores se conservaron.");
+  } else if (equiposRestaurados && !equiposActualesFijados) {
     actualizarEstadoEquipos("Equipos de esta evaluación restaurados. Fíjalos si quieres conservarlos en el historial de equipos.");
   }
 }
 
-function cerrarSesionActual() {
+function debeMantenerseCerrada(registro, ahora) {
+  if (!registro || !registro.cerrada) return false;
+  if (registro.motivoCierre === "manual" || registro.motivoCierre === "horario") return true;
+  return ahora < horaInicioClase || ahora >= horaFinClase;
+}
+
+function cerrarSesionActual(motivoCierre = "manual") {
   if (!claveSesionEquipos || sesionCerrada) return true;
   if (sesionSoloLectura) return false;
   if (modoAsistenciaActivo || modoEvaluacionActivo) {
     sesionCierrePendiente = true;
+    sesionCierreMotivoPendiente = motivoCierre;
     actualizarAvisoCierrePendiente();
     return false;
   }
@@ -2349,12 +2387,15 @@ function cerrarSesionActual() {
     resultadosEquiposActuales,
     calificacionesManualesActuales,
     ajustesCalificacionActuales,
-    true
+    true,
+    motivoCierre
   )) return false;
 
   sesionCerrada = true;
   sesionCierreIntentada = true;
   sesionCierrePendiente = false;
+  sesionCierreMotivoPendiente = null;
+  sesionCierreOrigen = motivoCierre;
   sesionSoloLectura = true;
   modoEvaluacionActivo = false;
   document.getElementById("session-end-notice").classList.add("hidden");
@@ -2371,7 +2412,7 @@ function cerrarSesionPendienteSiListo() {
     actualizarAvisoCierrePendiente();
     return false;
   }
-  return cerrarSesionActual();
+  return cerrarSesionActual(sesionCierreMotivoPendiente || "horario");
 }
 
 function reiniciarResultadosEquiposEvaluacion() {
