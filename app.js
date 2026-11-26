@@ -964,24 +964,15 @@ function renderizarHistorialEquipos() {
   const lista = document.getElementById("team-history-list");
   lista.innerHTML = "";
 
-  const rango = obtenerRangoFiltroHistorial();
-  const grupoFiltro = document.getElementById("team-history-group-filter").value || "all";
-  const registros = historialEquipos.filter(registro =>
-    (!rango.error && (!rango.desde || registro.fecha >= rango.desde) && (!rango.hasta || registro.fecha <= rango.hasta))
-    && (grupoFiltro === "all" || registro.grupoId === grupoFiltro)
-  ).sort((a, b) => {
-    const porFecha = b.fecha.localeCompare(a.fecha);
-    return porFecha
-      || b.actualizadoEn.localeCompare(a.actualizadoEn)
-      || (b.revision || 0) - (a.revision || 0);
-  });
+  const { registros: registrosFiltrados, error } = filtrarHistorialEquipos();
+  const registros = [...registrosFiltrados].reverse();
 
   const contador = document.getElementById("team-history-count");
   contador.innerText = `${registros.length} registro${registros.length === 1 ? "" : "s"} visible${registros.length === 1 ? "" : "s"} de ${historialEquipos.length}.`;
   if (registros.length === 0) {
     const vacio = document.createElement("p");
     vacio.className = "team-history-empty";
-    vacio.innerText = rango.error
+    vacio.innerText = error
       || "No hay combinaciones para este filtro. Cambia el periodo o el grupo para consultar otros registros.";
     lista.appendChild(vacio);
     return;
@@ -1249,6 +1240,33 @@ function fechaLocalISO(fecha) {
   ].join("-");
 }
 
+function compararVersionesRegistroEquipo(a, b) {
+  return a.actualizadoEn.localeCompare(b.actualizadoEn)
+    || (a.revision || 0) - (b.revision || 0);
+}
+
+function compararRegistrosHistorial(a, b) {
+  return a.fecha.localeCompare(b.fecha)
+    || (a.inicio || "").localeCompare(b.inicio || "")
+    || a.grupoNombre.localeCompare(b.grupoNombre, "es-MX")
+    || compararVersionesRegistroEquipo(a, b);
+}
+
+function filtrarHistorialEquipos(
+  filtro = document.getElementById("team-history-period-filter").value,
+  grupoFiltro = document.getElementById("team-history-group-filter").value || "all"
+) {
+  const rango = obtenerRangoFiltroHistorial(filtro);
+  if (rango.error) return { registros: [], rango, error: rango.error };
+
+  const registros = historialEquipos.filter(registro =>
+    (!rango.desde || registro.fecha >= rango.desde)
+    && (!rango.hasta || registro.fecha <= rango.hasta)
+    && (grupoFiltro === "all" || registro.grupoId === grupoFiltro)
+  ).sort(compararRegistrosHistorial);
+  return { registros, rango, error: "" };
+}
+
 function obtenerRangoFiltroHistorial(filtro = document.getElementById("team-history-period-filter").value) {
   const hoy = new Date();
   const hoyISO = fechaLocalISO(hoy);
@@ -1263,13 +1281,20 @@ function obtenerRangoFiltroHistorial(filtro = document.getElementById("team-hist
     const desde = document.getElementById("team-history-date-from").value;
     const hasta = document.getElementById("team-history-date-to").value;
     if (!desde && !hasta) return { desde: "", hasta: "", error: "Elige al menos una fecha para consultar el rango." };
+    if ((desde && !esFechaISOValida(desde)) || (hasta && !esFechaISOValida(hasta))) {
+      return { desde, hasta, error: "Las fechas del rango no son válidas." };
+    }
     if (desde && hasta && desde > hasta) return { desde, hasta, error: "La fecha inicial no puede ser posterior a la fecha final." };
     return { desde, hasta };
   }
 
   const periodo = periodosEscolares[filtro];
   if (!periodo || !periodo.inicio || !periodo.fin) {
-    return { desde: "", hasta: "", error: `Configura las fechas de ${filtro.replace("-", " ")} para consultar sus registros.` };
+    const nombrePeriodo = filtro.replace(/^period-(\d+)$/, "Periodo $1");
+    return { desde: "", hasta: "", error: `Configura las fechas de ${nombrePeriodo} para consultar sus registros.` };
+  }
+  if (!esConfiguracionPeriodosValida(periodosEscolares)) {
+    return { desde: "", hasta: "", error: "Revisa las fechas: los periodos deben tener rangos válidos y no traslaparse." };
   }
   return { desde: periodo.inicio, hasta: periodo.fin };
 }
@@ -1307,13 +1332,14 @@ function guardarPeriodosEscolares() {
 
 function esConfiguracionPeriodosValida(periodos) {
   const ids = ["period-1", "period-2", "period-3"];
+  if (!periodos || typeof periodos !== "object") return false;
   if (!ids.every(id => {
     const fechas = periodos[id];
     return fechas
       && typeof fechas.inicio === "string"
       && typeof fechas.fin === "string"
-      && (!fechas.inicio || /^\d{4}-\d{2}-\d{2}$/.test(fechas.inicio))
-      && (!fechas.fin || /^\d{4}-\d{2}-\d{2}$/.test(fechas.fin))
+      && (!fechas.inicio || esFechaISOValida(fechas.inicio))
+      && (!fechas.fin || esFechaISOValida(fechas.fin))
       && Boolean(fechas.inicio) === Boolean(fechas.fin)
       && (!fechas.inicio || fechas.inicio <= fechas.fin);
   })) return false;
@@ -1324,6 +1350,12 @@ function esConfiguracionPeriodosValida(periodos) {
   return configurados.every((fechas, indice) =>
     indice === 0 || configurados[indice - 1].fin < fechas.inicio
   );
+}
+
+function esFechaISOValida(fecha) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) return false;
+  const fechaLocal = new Date(`${fecha}T00:00:00`);
+  return !Number.isNaN(fechaLocal.getTime()) && fechaLocalISO(fechaLocal) === fecha;
 }
 
 function filasHistorialEquipo(registro) {
@@ -1343,13 +1375,13 @@ function filasHistorialEquipo(registro) {
       ? evaluacion.calificacionMaxima
       : calificacionMaximaAjustes;
   const configuracionEquipo = {
-    minima: evaluacion && Number.isInteger(evaluacion.calificacionMinimaEquipo)
+    minimaEquipo: evaluacion && Number.isInteger(evaluacion.calificacionMinimaEquipo)
       ? evaluacion.calificacionMinimaEquipo
       : calificacionMinimaEquipo,
-    maxima: evaluacion && Number.isInteger(evaluacion.calificacionMaximaEquipo)
+    maximaEquipo: evaluacion && Number.isInteger(evaluacion.calificacionMaximaEquipo)
       ? evaluacion.calificacionMaximaEquipo
       : calificacionMaximaEquipo,
-    predeterminada: evaluacion && Number.isInteger(evaluacion.calificacionPredeterminadaEquipo)
+    predeterminadaEquipo: evaluacion && Number.isInteger(evaluacion.calificacionPredeterminadaEquipo)
       ? evaluacion.calificacionPredeterminadaEquipo
       : calificacionPredeterminadaEquipo
   };
@@ -1392,7 +1424,10 @@ function filasHistorialEquipo(registro) {
       Asistencia: obtenerValorAsistenciaReporte(estado, listaCerrada),
       Calificación: nota.nota === null ? "" : nota.nota,
       "Resultado del equipo": etiquetaResultadoEquipo(resultados.get(indice + 1) || "pendiente"),
-      Ajuste: ajustes.get(alumno) || 0
+      Ajuste: ajustes.get(alumno) || 0,
+      "Ajuste aplicado": nota.nota === null || nota.manual || nota.falta
+        ? 0
+        : ajustes.get(alumno) || 0
     };
   }));
 }
@@ -1430,6 +1465,22 @@ function filasEquiposHistorial(registro) {
   }));
 }
 
+function filasHistorialAlumnosParaExcel(registros) {
+  return registros.flatMap(registro => filasHistorialEquipo(registro).map(fila => ({
+    ...fila,
+    Versión: registro.revision || 1,
+    Fijado: registro.fijado ? "Sí" : "No"
+  })));
+}
+
+function filasHistorialEquiposParaExcel(registros) {
+  return registros.flatMap(registro => filasEquiposHistorial(registro).map(fila => ({
+    ...fila,
+    Versión: registro.revision || 1,
+    Fijado: registro.fijado ? "Sí" : "No"
+  })));
+}
+
 function obtenerEvaluacionSnapshot(registro) {
   if (registro.evaluacion) return registro.evaluacion;
   const ultimo = obtenerUltimoRegistroEquipo(registro.clave);
@@ -1439,9 +1490,10 @@ function obtenerEvaluacionSnapshot(registro) {
 }
 
 function crearLibroHistorial(registros) {
-  const filasAlumnos = registros.flatMap(filasHistorialEquipo);
-  const filasEquipos = registros.flatMap(filasEquiposHistorial);
-  const filasSesiones = registros.map(registro => ({
+  const registrosOrdenados = [...registros].sort(compararRegistrosHistorial);
+  const filasAlumnos = filasHistorialAlumnosParaExcel(registrosOrdenados);
+  const filasEquipos = filasHistorialEquiposParaExcel(registrosOrdenados);
+  const filasSesiones = registrosOrdenados.map(registro => ({
     Grupo: registro.grupoNombre,
     Fecha: registro.fecha,
     Día: NOMBRES_DIAS[registro.dia] || registro.dia,
@@ -1451,10 +1503,23 @@ function crearLibroHistorial(registros) {
     "Fijado": registro.fijado ? "Sí" : "No"
   }));
   const libro = window.XLSX.utils.book_new();
+  const nombresHojas = new Set(["Sesiones", "Alumnos", "Equipos", "Criterios"].map(nombre => nombre.toLocaleLowerCase("es-MX")));
   [
-    { nombre: "Sesiones", filas: filasSesiones, columnas: ["Grupo", "Fecha", "Día", "Horario", "Cantidad de equipos", "Versión", "Fijado"] },
-    { nombre: "Alumnos", filas: filasAlumnos, columnas: ["Grupo", "Fecha", "Día", "Horario", "Equipo", "Nombre", "Asistencia", "Calificación", "Resultado del equipo", "Ajuste"] },
-    { nombre: "Equipos", filas: filasEquipos, columnas: ["Grupo", "Fecha", "Equipo", "Resultado", "Integrantes"] }
+    {
+      nombre: "Sesiones",
+      filas: filasSesiones,
+      columnas: ["Grupo", "Fecha", "Día", "Horario", "Cantidad de equipos", "Versión", "Fijado"]
+    },
+    {
+      nombre: "Alumnos",
+      filas: filasAlumnos,
+      columnas: ["Grupo", "Fecha", "Día", "Horario", "Equipo", "Nombre", "Asistencia", "Calificación", "Resultado del equipo", "Ajuste", "Ajuste aplicado", "Versión", "Fijado"]
+    },
+    {
+      nombre: "Equipos",
+      filas: filasEquipos,
+      columnas: ["Grupo", "Fecha", "Equipo", "Resultado", "Calificación del equipo", "Integrantes", "Versión", "Fijado"]
+    }
   ].forEach(({ nombre, filas, columnas }) => {
     const hoja = window.XLSX.utils.json_to_sheet(filas, { header: columnas });
     hoja["!cols"] = columnas.map(clave => ({
@@ -1462,7 +1527,126 @@ function crearLibroHistorial(registros) {
     }));
     window.XLSX.utils.book_append_sheet(libro, hoja, nombre);
   });
+
+  const sesionesPorGrupo = agruparSesionesSabana(registrosOrdenados);
+  sesionesPorGrupo.forEach(({ grupoId, nombreGrupo, sesiones }) => {
+    const hoja = crearHojaSabanaGrupo(sesiones);
+    const baseNombre = nombreHojaExcelSegura(`${nombreGrupo} (${grupoId})`);
+    const nombreHoja = obtenerNombreHojaDisponible(baseNombre, nombresHojas);
+    window.XLSX.utils.book_append_sheet(libro, hoja, nombreHoja);
+  });
+
+  const hojaCriterios = window.XLSX.utils.aoa_to_sheet([
+    ["Dato", "Criterio"],
+    ["Asistencia 1", "Presente o retardo."],
+    ["Asistencia 0", "Falta o falta justificada; también una falta sin marca cuando la lista quedó cerrada."],
+    ["Asistencia vacía", "Lista pendiente o alumno sin registro para esa sesión."],
+    ["Calificación del alumno", "Usa la misma lógica que la hoja detallada. La falta recibe la mínima salvo que tenga una calificación manual; una celda vacía indica pendiente o alumno sin equipo."],
+    ["Calificación del equipo", "La hoja Equipos usa la nota predeterminada configurada si la sesión se cerró sin resultado; no sustituye la nota individual."],
+    ["Ajuste", "Ajuste registrado. “Ajuste aplicado” es 0 cuando todavía está pendiente, hay falta o existe calificación manual."],
+    ["Sábana", "Incluye la revisión más reciente por grupo y fecha. Las hojas detalladas conservan todas las versiones seleccionadas."]
+  ]);
+  hojaCriterios["!cols"] = [{ wch: 24 }, { wch: 92 }];
+  window.XLSX.utils.book_append_sheet(libro, hojaCriterios, "Criterios");
   return libro;
+}
+
+function agruparSesionesSabana(registros) {
+  // La sábana usa una sola revisión por fecha; las hojas detalladas conservan todas.
+  const grupos = new Map();
+  registros.forEach(registro => {
+    if (!grupos.has(registro.grupoId)) {
+      grupos.set(registro.grupoId, {
+        grupoId: registro.grupoId,
+        nombreGrupo: registro.grupoNombre,
+        sesionesPorFecha: new Map()
+      });
+    }
+    const grupo = grupos.get(registro.grupoId);
+    const registroExistente = grupo.sesionesPorFecha.get(registro.fecha);
+    if (!registroExistente || compararVersionesRegistroEquipo(registro, registroExistente) > 0) {
+      grupo.sesionesPorFecha.set(registro.fecha, registro);
+    }
+  });
+
+  return Array.from(grupos.values())
+    .map(grupo => ({
+      grupoId: grupo.grupoId,
+      nombreGrupo: grupo.nombreGrupo,
+      sesiones: Array.from(grupo.sesionesPorFecha.values()).sort(compararRegistrosHistorial)
+    }))
+    .sort((a, b) => a.nombreGrupo.localeCompare(b.nombreGrupo, "es-MX"));
+}
+
+function crearHojaSabanaGrupo(sesiones) {
+  const alumnos = new Set();
+  const datosSesiones = sesiones.map(registro => {
+    const registroAsistencia = historialAsistencia.find(item => item.clave === registro.clave);
+    const listaAsistencia = new Set(registroAsistencia ? registroAsistencia.alumnos : []);
+    const miembros = new Set(registro.equipos.flat());
+    miembros.forEach(alumno => alumnos.add(alumno));
+    listaAsistencia.forEach(alumno => alumnos.add(alumno));
+
+    return {
+      registro,
+      registroAsistencia,
+      listaAsistencia,
+      miembros,
+      notas: new Map(filasHistorialEquipo(registro).map(fila => [fila.Nombre, fila.Calificación]))
+    };
+  });
+  const sesionesEtiquetadas = datosSesiones.map(datos => ({
+    ...datos,
+    etiqueta: etiquetaSesionHistorial(datos.registro)
+  }));
+  const listaAlumnos = Array.from(alumnos)
+    .sort(new Intl.Collator("es-MX", { numeric: true, sensitivity: "base" }).compare);
+  const encabezadosAsistencia = sesionesEtiquetadas.map(({ etiqueta }) => `Asistencia ${etiqueta}`);
+  const encabezadosCalificacion = sesionesEtiquetadas.map(({ etiqueta }) => `Calificación ${etiqueta}`);
+  const filas = listaAlumnos.map(alumno => [
+    alumno,
+    ...sesionesEtiquetadas.map(datos => {
+      const perteneceASesion = datos.listaAsistencia.has(alumno) || datos.miembros.has(alumno);
+      if (!perteneceASesion || !datos.registroAsistencia) return "";
+      const estado = datos.registroAsistencia.marcas.find(marca => marca.alumno === alumno)?.estado || "";
+      return obtenerValorAsistenciaReporte(
+        estado,
+        datos.registroAsistencia.tomada !== false
+      );
+    }),
+    ...sesionesEtiquetadas.map(datos =>
+      datos.miembros.has(alumno) ? (datos.notas.get(alumno) ?? "") : ""
+    )
+  ]);
+  const hoja = window.XLSX.utils.aoa_to_sheet([
+    ["Alumno", ...encabezadosAsistencia, ...encabezadosCalificacion],
+    ...filas
+  ]);
+  hoja["!cols"] = [
+    { wch: 30 },
+    ...encabezadosAsistencia.map(() => ({ wch: 20 })),
+    ...encabezadosCalificacion.map(() => ({ wch: 20 }))
+  ];
+  return hoja;
+}
+
+function etiquetaSesionHistorial(registro) {
+  return registro.inicio ? `${registro.fecha} ${registro.inicio}` : registro.fecha;
+}
+
+function nombreHojaExcelSegura(nombre) {
+  return nombre.replace(/[\\/?*[\]:]/g, " ").trim().slice(0, 31) || "Grupo";
+}
+
+function obtenerNombreHojaDisponible(nombre, nombresUsados) {
+  let candidato = nombre;
+  let numero = 2;
+  while (nombresUsados.has(candidato.toLocaleLowerCase("es-MX"))) {
+    const sufijo = ` ${numero++}`;
+    candidato = `${nombre.slice(0, 31 - sufijo.length)}${sufijo}`;
+  }
+  nombresUsados.add(candidato.toLocaleLowerCase("es-MX"));
+  return candidato;
 }
 
 function descargarRegistroEquipo(registro) {
@@ -1472,7 +1656,11 @@ function descargarRegistroEquipo(registro) {
   }
   try {
     const libro = crearLibroHistorial([registro]);
-    window.XLSX.writeFile(libro, `historial-${registro.grupoId}-${registro.fecha}-v${registro.revision || 1}.xlsx`);
+    const nombreArchivo = crearNombreArchivoHistorial(
+      registro.grupoId,
+      `Sesion-${registro.fecha}-v${registro.revision || 1}`
+    );
+    window.XLSX.writeFile(libro, nombreArchivo);
   } catch (error) {
     console.error("No se pudo exportar el historial del equipo", error);
     alert("No se pudo descargar el historial de este grupo.");
@@ -1480,41 +1668,82 @@ function descargarRegistroEquipo(registro) {
 }
 
 function descargarHistorialEquipos() {
-  descargarHistorialPeriodo("all");
+  descargarHistorialConFiltro();
 }
 
 function descargarHistorialPeriodo(periodo) {
+  descargarHistorialConFiltro(periodo);
+}
+
+function descargarHistorialConFiltro(
+  filtro = document.getElementById("team-history-period-filter").value
+) {
   if (!window.XLSX) {
     alert("No se pudo cargar el componente de Excel. Revisa tu conexión a internet e inténtalo de nuevo.");
     return;
   }
-  const rango = periodo === "all" ? null : periodosEscolares[periodo];
-  if (periodo !== "all" && (!rango || !rango.inicio || !rango.fin)) {
-    alert(`Configura las fechas de ${periodo.replace("-", " ")} antes de descargar.`);
+  const grupoFiltro = document.getElementById("team-history-group-filter").value || "all";
+  const { registros, rango, error } = filtrarHistorialEquipos(filtro, grupoFiltro);
+  if (error) {
+    alert(error);
     return;
   }
-  const registros = historialEquipos.filter(registro =>
-    !rango || (registro.fecha >= rango.inicio && registro.fecha <= rango.fin)
-  );
   if (registros.length === 0) {
-    alert("No hay registros de equipos en ese periodo.");
+    alert("No hay registros de equipos para el periodo y grupo seleccionados.");
     return;
   }
 
   try {
     const libro = crearLibroHistorial(registros);
-    const nombreArchivo = periodo === "all"
-      ? "historial-completo-equipos.xlsx"
-      : `historial-${periodo}-${rango.inicio}-${rango.fin}.xlsx`;
+    const nombreArchivo = crearNombreArchivoHistorial(
+      grupoFiltro,
+      etiquetaFiltroArchivoHistorial(filtro, rango)
+    );
     window.XLSX.writeFile(libro, nombreArchivo);
   } catch (error) {
     console.error("No se pudo exportar el historial de equipos", error);
-    alert("No se pudo descargar el historial del periodo seleccionado.");
+    alert("No se pudo descargar el historial filtrado.");
   }
 }
 
+function etiquetaFiltroArchivoHistorial(filtro, rango) {
+  const etiquetas = {
+    today: "Hoy",
+    week: "EstaSemana",
+    "period-1": "Periodo1",
+    "period-2": "Periodo2",
+    "period-3": "Periodo3",
+    all: "TodoElHistorial"
+  };
+  if (filtro === "custom") {
+    return `Rango-${rango.desde || "inicio"}-${rango.hasta || "fin"}`;
+  }
+  return etiquetas[filtro] || filtro;
+}
+
+function crearNombreArchivoHistorial(grupoId, etiquetaPeriodo) {
+  let grupo = "TodosLosGrupos";
+  if (grupoId !== "all") {
+    const configurado = gruposConfigurados.find(item => item.id === grupoId);
+    const registrado = historialEquipos.find(item => item.grupoId === grupoId);
+    const nombre = configurado ? configurado.nombre : registrado ? registrado.grupoNombre : grupoId;
+    grupo = `${nombre}-${grupoId}`;
+  }
+  const fechaDescarga = fechaLocalISO(new Date());
+  return `historial-${segmentoArchivoSeguro(grupo)}-${segmentoArchivoSeguro(etiquetaPeriodo)}-${fechaDescarga}.xlsx`;
+}
+
+function segmentoArchivoSeguro(valor) {
+  return String(valor)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9_-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    || "historial";
+}
+
 function reiniciarCicloEscolar() {
-  if (!window.confirm("Se eliminarán los historiales de equipos, asistencia y evaluación, además de las listas de alumnos. Se conservarán los grupos, horarios, colores y calificaciones configuradas. ¿Continuar?")) return;
+  if (!window.confirm("Se eliminarán los historiales de equipos, asistencia y evaluación, además de las listas de alumnos. Se conservarán los grupos, horarios, colores, calificaciones y fechas de los periodos escolares. ¿Continuar?")) return;
   if (!window.confirm("Esta acción es permanente. ¿Confirmas que quieres preparar un nuevo ciclo escolar?")) return;
 
   const clavesHistorial = [
@@ -1538,11 +1767,6 @@ function reiniciarCicloEscolar() {
     historialAsistencia = [];
     historialEvaluacion = [];
     gruposConfigurados = gruposConfigurados.map(grupo => ({ ...grupo, alumnos: [] }));
-    periodosEscolares = {
-      "period-1": { inicio: "", fin: "" },
-      "period-2": { inicio: "", fin: "" },
-      "period-3": { inicio: "", fin: "" }
-    };
     clavesHistorial.forEach(clave => localStorage.removeItem(clave));
     guardarEnLocalStorage();
   } catch (error) {
@@ -1596,7 +1820,7 @@ function reiniciarCicloEscolar() {
   actualizarControlesEvaluacion();
   actualizarEstadoEquipos("Ciclo escolar reiniciado. Configura los grupos y alumnos para comenzar.");
   prepararFiltrosHistorialEquipos();
-  alert("El ciclo escolar quedó reiniciado. Puedes configurar las nuevas listas de alumnos y periodos.");
+  alert("El ciclo escolar quedó reiniciado. Las fechas de los periodos se conservaron; puedes revisarlas o actualizarlas para el nuevo ciclo.");
 }
 
 function crearTablaHistorialAlumnos(alumnos) {
@@ -1611,7 +1835,8 @@ function crearTablaHistorialAlumnos(alumnos) {
     "Asistencia",
     "Calificación",
     "Resultado del equipo",
-    "Ajuste"
+    "Ajuste",
+    "Ajuste aplicado"
   ];
   let columnaOrdenada = null;
   let direccionOrden = 1;
@@ -1652,7 +1877,7 @@ function crearTablaHistorialAlumnos(alumnos) {
         const vacioB = valorB === "" || valorB === "—";
         if (vacioA !== vacioB) return vacioA ? 1 : -1;
 
-        const comparacion = titulo === "Calificación"
+        const comparacion = ["Calificación", "Ajuste", "Ajuste aplicado"].includes(titulo)
           ? Number(valorA) - Number(valorB)
           : comparadorTexto.compare(valorA, valorB);
         return comparacion * direccionOrden;
