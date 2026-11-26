@@ -779,10 +779,7 @@ function puedeAcomodarEquiposManualmente() {
     claveSesionEquipos
     && !sesionSoloLectura
     && !equiposActualesFijados
-    && !modoEvaluacionActivo
     && resultadosEquiposActuales.size === 0
-    && calificacionesManualesActuales.size === 0
-    && ajustesCalificacionActuales.size === 0
   );
 }
 
