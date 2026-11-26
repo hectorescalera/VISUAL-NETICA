@@ -816,6 +816,8 @@ function fijarEquiposActuales() {
     return;
   }
 
+  if (!window.confirm("Al fijar estos equipos, se guardará esta combinación en el historial y se bloqueará el arrastre de alumnos en esta sesión. Después podrás editar la versión desde el historial. ¿Deseas continuar?")) return;
+
   const fecha = claveSesionEquipos.slice(claveSesionEquipos.lastIndexOf("|") + 1);
   const registro = {
     id: crearIdSnapshotEquipo(),
